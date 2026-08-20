@@ -1547,6 +1547,8 @@ NS.handoff = (function(){
     const gateNote = stageStatus==='FAIL' ? ' — CÓ MÁY NÉN OVERSIZING >10%, kiểm tra lại trước khi dùng số này tính chi phí!' :
                      stageStatus==='WARN' ? ' — có máy nén lệch 5-10%, nên kiểm tra lại' : '';
     NS.ui.toast(toastType, 'Đã xuất dữ liệu máy nén/dàn ngưng/điện → BOQ & Cost Estimate ('+(copied?'đã copy clipboard + ':'')+'tải file JSON)'+gateNote);
+    try{ window.dispatchEvent(new CustomEvent('HUB:export', {detail:{to:'boq', bundle:bundle}})); }catch(e){}
+    return bundle; // Hub Shell dùng trực tiếp object này, không phụ thuộc file tải xuống
   }
 
   // ── Xuất dữ liệu nhiệt động sang NH3 Vessel Calculator (Trạm 2) ──
@@ -1618,6 +1620,8 @@ NS.handoff = (function(){
       summary: 'Xuất → NH3 Vessel Calculator · ' + activeStations.length + ' trạm · Tc=' + NS.calc.calcState.Tc + '°C' });
 
     NS.ui.toast('ok', 'Đã xuất Data Passport → NH3 Vessel Calculator (' + (copied?'đã copy clipboard + ':'') + 'tải file JSON)');
+    try{ window.dispatchEvent(new CustomEvent('HUB:export', {detail:{to:'nh3vessel', bundle:bundle}})); }catch(e){}
+    return bundle; // Hub Shell dùng trực tiếp object này, không phụ thuộc file tải xuống
   }
 
   return {
@@ -5187,20 +5191,28 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   var NS = window.RefrigDesignNH3;
   if(!NS) return;
 
-  // exportProjectData(): gộp CẢ 2 stage (refrigCycle cho Trạm 2, electrical cho Trạm 4) vào 1 bundle
-  // duy nhất — downstream app tự lấy đúng stage mình cần từ bundle.stages{}.
-  // Vẫn giữ nguyên 2 hàm cũ (exportToVesselCalc/exportToBOQ) cho luồng UI hiện tại không đổi.
+  // exportProjectData(): gộp CẢ 2 stage (refrigCycle cho Trạm 2, electrical/stationLoads cho
+  // Trạm 4) vào 1 bundle duy nhất — downstream app tự lấy đúng stage mình cần từ bundle.stages{}.
+  // Tận dụng lại đúng logic đã kiểm chứng của 2 hàm export hiện có (exportToVesselCalc/exportToBOQ),
+  // không tính lại từ đầu — chỉ gộp kết quả trả về của cả hai thành 1 object cho Hub Shell dùng.
   NS.exportProjectData = function(){
     if(!NS.calc || !NS.calc.calcState || !NS.calc.calcState.cSt || !NS.calc.calcState.cSt.length){
       if(NS.ui) NS.ui.toast('err','Chưa có dữ liệu tính toán — vui lòng chạy tính toán trước');
       return null;
     }
-    // Tận dụng lại đúng logic đã kiểm chứng của 2 hàm export hiện có, không tính lại từ đầu.
-    // Gọi trực tiếp 2 hàm gốc (chấp nhận side-effect tải 2 file — Hub sẽ dùng bundle trả về,
-    // không phụ thuộc file tải xuống). Ưu tiên đơn giản/an toàn hơn viết lại logic.
-    if(NS.handoff && NS.handoff.exportToVesselCalc) NS.handoff.exportToVesselCalc();
-    if(NS.handoff && NS.handoff.exportToBOQ) NS.handoff.exportToBOQ();
-    return true;
+    const vesselBundle = (NS.handoff && NS.handoff.exportToVesselCalc) ? NS.handoff.exportToVesselCalc() : null;
+    const boqBundle = (NS.handoff && NS.handoff.exportToBOQ) ? NS.handoff.exportToBOQ() : null;
+    const base = vesselBundle || boqBundle;
+    if(!base) return null;
+    return {
+      projectId: base.projectId,
+      projectName: base.projectName,
+      exportedAt: new Date().toISOString(),
+      exportedBy: base.exportedBy,
+      calcState: vesselBundle ? vesselBundle.calcState : undefined,
+      stages: Object.assign({}, vesselBundle && vesselBundle.stages, boqBundle && boqBundle.stages),
+      auditLog: (vesselBundle && vesselBundle.auditLog) || (boqBundle && boqBundle.auditLog) || []
+    };
   };
 
   // importProjectData(bundle): mở modal nhập có sẵn của RDN3, tự điền JSON, hiện bước xem trước —

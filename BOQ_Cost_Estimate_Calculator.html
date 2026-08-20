@@ -1447,6 +1447,7 @@ const handoff = {
     ui.closeModal('modalImport');
     calc.run();
     ui.toast('ok', _D('toastImported')+addedCount+_D('toastImportedNote'));
+    try{ window.dispatchEvent(new CustomEvent('HUB:import', {detail:{bundle:bundle}})); }catch(e){}
   },
 
   _updateBanner(){

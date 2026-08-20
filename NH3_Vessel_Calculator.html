@@ -2796,6 +2796,7 @@ const _handoff = {
     _ui.renderImportedStationConfig();
     _calc.run();
     _ui.toast('ok',D('toastImportedData'));
+    try{ window.dispatchEvent(new CustomEvent('HUB:import', {detail:{from:'refrigdesign', bundle:bundle}})); }catch(e){}
   },
   exportToNextStation(){
     if(!_state.vessels.length){ _ui.alert(D('noResultTitle'),D('calcFirstMsg')); return; }
@@ -2868,6 +2869,8 @@ const _handoff = {
                 overallGate==='FAIL' ? 'Đã xuất dù CÓ BÌNH FAIL — vui lòng kiểm tra kỹ trước khi dùng cho thiết kế chính thức.' :
                 'Đã xuất Data Passport → Pressure Vessel/BOQ';
     _ui.toast(overallGate==='FAIL'?'err':overallGate==='WARN'?'warn':'ok', msg);
+    try{ window.dispatchEvent(new CustomEvent('HUB:export', {detail:{to:'pressurevessel', bundle:bundle}})); }catch(e){}
+    return bundle; // Hub Shell dùng trực tiếp object này (sau khi kỹ sư xác nhận qua modal thẩm định)
   },
   _updateBanner(){
     const el=document.getElementById('handoffBanner');
