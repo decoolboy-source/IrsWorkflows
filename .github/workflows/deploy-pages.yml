@@ -26,6 +26,8 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload site (static, no build step)
         uses: actions/upload-pages-artifact@v3
