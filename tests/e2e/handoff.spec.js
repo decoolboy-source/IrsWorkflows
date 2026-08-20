@@ -36,7 +36,7 @@ test.describe('Cầu nối Hub Shell — HUB:export / HUB:import (dùng dữ li�
 
     // Trạm 2 phải mở modal xem trước đã điền sẵn JSON — chứng minh importProjectData()
     // thật của Trạm 2 đã được Hub gọi (safety-gate: chưa ghi vào _state tới khi xác nhận).
-    const nh3vessel = getFrame(page, 'nh3vessel');
+    const nh3vessel = await getFrame(page, 'nh3vessel');
     await expect(nh3vessel.locator('#importJson')).not.toHaveValue('', { timeout: 10_000 });
 
     // Secondary route (nền) → phải lưu bundle cho Pressure Vessel dù chưa mở trạm đó
@@ -64,7 +64,7 @@ test.describe('Cầu nối Hub Shell — HUB:export / HUB:import (dùng dữ li�
     await confirmBtn.click(); // đây mới là bước thật sự dispatch HUB:export (trong _doExport())
 
     await expect(page.locator('#crumb b')).toContainText('Pressure Vessel Calculator', { timeout: 10_000 });
-    const pv = getFrame(page, 'pressurevessel');
+    const pv = await getFrame(page, 'pressurevessel');
     // PV mở modal xem trước (KHÔNG tự ghi thẳng) — đúng nguyên tắc safety-gate ở Mục 3 CONTRACT
     await expect(pv.locator('#hoV_json')).not.toHaveValue('', { timeout: 10_000 });
   });
@@ -85,7 +85,7 @@ test.describe('Cầu nối Hub Shell — HUB:export / HUB:import (dùng dữ li�
     expect(exportResult, 'exportProjectData() (Trạm 3) phải trả về bundle với dữ liệu tính toán mặc định').toBeTruthy();
 
     await expect(page.locator('#crumb b')).toContainText('BOQ & Cost Estimate', { timeout: 10_000 });
-    const boq = getFrame(page, 'boq');
+    const boq = await getFrame(page, 'boq');
     // BOQ cũng theo đúng safety-gate: importProjectData() chỉ mở modal xem
     // trước đã điền sẵn JSON, KHÔNG tự ghi vào _state.items cho tới khi người
     // dùng bấm xác nhận trong modal — nên kiểm tra nội dung textarea, không

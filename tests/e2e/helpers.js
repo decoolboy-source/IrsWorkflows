@@ -41,9 +41,23 @@ async function waitForStationReady(page, stationId, timeout = 20_000) {
   );
 }
 
-function getFrame(page, stationId) {
+/**
+ * Lấy Frame object của 1 trạm. page.frame() là lookup 1 lần trên danh sách
+ * frame Playwright đã track — ngay sau khi Hub Shell vừa mount/điều hướng
+ * (VD ngay sau click nút xác nhận), iframe có thể đã có trong DOM nhưng
+ * Playwright chưa kịp ghi nhận frame đó (đặc biệt trên runner CI chậm hơn
+ * máy dev) — nên cần poll thay vì lookup 1 lần.
+ */
+async function getFrame(page, stationId, timeout = 10_000) {
   const { file } = STATIONS[stationId];
-  const frame = page.frame({ url: new RegExp(file.replace('.', '\\.') + '$') });
+  const re = new RegExp(file.replace('.', '\\.') + '$');
+  const deadline = Date.now() + timeout;
+  let frame = null;
+  while (Date.now() < deadline) {
+    frame = page.frame({ url: re });
+    if (frame) return frame;
+    await page.waitForTimeout(100);
+  }
   expect(frame, `Không tìm thấy iframe cho trạm "${stationId}" (${file}) — kiểm tra src trong Hub_Shell.html`).toBeTruthy();
   return frame;
 }
