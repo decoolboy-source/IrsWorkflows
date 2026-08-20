@@ -124,8 +124,24 @@ tính năng mới vào bất kỳ trạm nào làm đổi tên hàm/id trong dan
 (PROJECT_DATA_CONTRACT.md), nhớ cập nhật cả `tests/e2e/helpers.js` lẫn spec
 liên quan trong cùng PR.
 
+### Test trên di động — những gì đã kiểm chứng và những gì chưa
+
+`tests/e2e/mobile.spec.js` chạy trên 2 project mô phỏng di động của
+Playwright (`mobile-chrome` = Pixel 7 engine Chromium, `mobile-safari` =
+iPhone 14 engine WebKit) — kiểm tra bottom-nav hiện đúng, thẻ trạm không
+tràn ngang, mở trạm qua bottom-nav hoạt động. Đây **không phải** test trên
+thiết bị thật — Playwright chỉ mô phỏng kích thước màn hình/user agent/touch,
+**không** mô phỏng được: bàn phím ảo che form nhập liệu, cử chỉ vuốt thật,
+thanh địa chỉ Safari thu/giãn làm đổi chiều cao viewport động, hiệu năng
+render trên phần cứng di động thật (các file trạm nặng 2-5MB). Trước khi
+dùng cho dự án thật, nên tự bấm thử trên ít nhất 1 điện thoại Android
+(Chrome) và 1 iPhone (Safari) thật.
+
 ## Cập nhật sau này
 
-Khi sửa nội dung 1 trong 4 file trạm hoặc `Hub_Shell.html`, nhớ tăng
-`CACHE_VERSION` trong `sw.js` (VD `hubshell-v2`) để trình duyệt của người
-dùng đã cài app tải lại đúng bản mới thay vì dùng bản cache cũ.
+Khi sửa nội dung 1 trong 4 file trạm hoặc `Hub_Shell.html`, nhớ:
+1. Tăng `CACHE_VERSION` trong `sw.js` (VD `hubshell-v3`) để trình duyệt của
+   người dùng đã cài app tải lại đúng bản mới thay vì dùng bản cache cũ.
+2. Nếu thay đổi ảnh hưởng hành vi của `Hub_Shell.html` (không phải sửa nhỏ
+   trong 1 trạm), tăng `HUB_SHELL_VERSION` trong `Hub_Shell.html` và ghi vào
+   `CHANGELOG.md`. Version này độc lập với version riêng của từng trạm.
