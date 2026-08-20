@@ -17,6 +17,7 @@ BOQ_Cost_Estimate_Calculator.html ← Trạm 4: khái toán chi phí (điểm cu
 PROJECT_DATA_CONTRACT.md          ← hợp đồng dữ liệu giữa 4 trạm + Hub
 manifest.webmanifest, sw.js       ← cho phép cài ứng dụng (PWA) trên điện thoại/máy tính
 assets/icons/                     ← icon ứng dụng
+tests/e2e/                        ← bộ test tự động bảo vệ cầu nối Hub Shell (xem mục "Test tự động")
 ```
 
 Mỗi trạm vẫn là **1 file HTML độc lập, chạy được một mình** (mở trực tiếp
@@ -94,6 +95,34 @@ Khôi phục từ file sao lưu".
 Giới hạn còn tồn đọng: Trạm 3 (Pressure Vessel) chỉ backup được các bình
 **đã bấm "Lưu vào dự án"** — input đang gõ dở ở tab Tính toán mà chưa lưu thì
 chưa nằm trong phạm vi bản vá này.
+
+## Test tự động — bảo vệ cầu nối khi sửa 1 trong 4 trạm
+
+Hub Shell dựa vào một số hàm/tên biến/id DOM cụ thể bên trong từng trạm
+(`exportProjectData()`, `#importJson`, `#t_btnAddStation`...). Nếu ai đó sửa
+1 trong 4 file trạm và vô tình đổi tên/xoá 1 trong số đó, cầu nối sẽ gãy
+**âm thầm** — không lỗi console, chỉ đơn giản là dữ liệu không còn tự chuyển
+giữa các trạm nữa. Bộ test `tests/e2e/` được viết ra chính để bắt loại lỗi
+này, tự chạy trong CI (`.github/workflows/e2e-tests.yml`) mỗi khi có PR sửa
+`Hub_Shell.html` hoặc 1 trong 4 file trạm.
+
+Nguyên tắc quan trọng của bộ test: **luôn gọi hàm/nút thật** của từng trạm
+(`exportProjectData()`, click nút xác nhận thật trong modal...), **không**
+tự tạo/`dispatchEvent()` giả lập — vì nếu tự giả lập event thì test sẽ luôn
+pass ngay cả khi trạm gốc đã bị xoá mất dòng phát event thật.
+
+```bash
+npm install
+npx playwright install --with-deps chromium   # chỉ cần 1 lần
+npm run test:e2e            # chạy toàn bộ (~20s)
+npm run test:e2e:ui         # chạy có giao diện, tiện khi debug 1 test đang fail
+```
+
+`tests/e2e/handoff.spec.js` là quan trọng nhất — kiểm tra đủ cả 4 cạnh bàn
+giao (Trạm 1→2, 1→3 ngầm, 2→3, 3→4) bằng dữ liệu tính toán thật. Khi thêm
+tính năng mới vào bất kỳ trạm nào làm đổi tên hàm/id trong danh sách CONTRACT
+(PROJECT_DATA_CONTRACT.md), nhớ cập nhật cả `tests/e2e/helpers.js` lẫn spec
+liên quan trong cùng PR.
 
 ## Cập nhật sau này
 

@@ -1,0 +1,13 @@
+{
+  "name": "hub-shell-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "E2E regression suite for Hub Shell + the 4 station calculators. Guards the HUB:export/HUB:import bridge contract, autosave, and backup/restore against accidental breakage when any of the station files change.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
