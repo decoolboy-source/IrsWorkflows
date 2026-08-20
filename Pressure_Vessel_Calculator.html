@@ -4611,6 +4611,7 @@ window.AppPV = (function(){
       const vcArea = document.getElementById('vesselCardsArea');
       if(vcArea && vcArea.scrollIntoView) vcArea.scrollIntoView({behavior:'smooth', block:'start'});
       admin.toast(`✅ Đã nhập ${mechCount} bình cơ khí — xem trực tiếp bên dưới. ${nh3Count?nh3Count+' bình NH3 (Trung Gian/Economizer) đã lưu vào dự án "'+state.projects.find(p=>p.id===projectId).name+'".':''} Kiểm tra lại từng bình trước khi xuất báo cáo.`);
+      try{ window.dispatchEvent(new CustomEvent('HUB:import', {detail:{from:'nh3vessel', bundle:bundle}})); }catch(e){}
     },
 
     confirmImportVessel(vesselId){
@@ -4694,6 +4695,8 @@ window.AppPV = (function(){
       const msg = worstGate==='FAIL' ? '⛔ Đã xuất nhưng CÓ MỤC FAIL (xem chi tiết) — kiểm tra lại trước khi tính chi phí!' :
                   worstGate==='WARN' ? '⚠️ Đã xuất, có cảnh báo WARN — nên kiểm tra lại.' : '✅ Đã xuất Data Passport → BOQ & Cost Estimate';
       admin.toast(msg, worstGate==='FAIL');
+      try{ window.dispatchEvent(new CustomEvent('HUB:export', {detail:{to:'boq', bundle:bundle}})); }catch(e){}
+      return bundle; // Hub Shell dùng trực tiếp object này, không phụ thuộc file tải xuống
     },
 
     /* ---------- TRẠM 3 (RDN3) → tab Bình NH3, chỉ T_vessel + mDot_coil ---------- */
@@ -4786,6 +4789,7 @@ window.AppPV = (function(){
       nh3.runFullCalculation();
       ui.showTab('tab-nh3');
       admin.toast('✅ Đã nhập T_vessel='+s.tiLocal+'°C, mDot='+((s.mDot||0)*3600).toFixed(1)+'kg/h. Nhập tay Q_Hex/ΔT/Gas lỏng vào theo thiết kế coil thực tế.');
+      try{ window.dispatchEvent(new CustomEvent('HUB:import', {detail:{from:'refrigdesign', bundle:bundle}})); }catch(e){}
     }
   };
 
