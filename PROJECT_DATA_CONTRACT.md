@@ -83,6 +83,40 @@ Hub Shell lắng nghe 2 event này trên `iframe.contentWindow` của trạm đa
 Đây chính là cơ chế thay thế cho việc tải file → mở app khác → tìm nút nhập →
 dán/tải file → bấm xem trước, thủ công 100% trước đây.
 
+## 4b. Backup contract cho Hub Shell (mới thêm — khác Mục 3/4 ở trên)
+
+Mục 3–4 nói về dữ liệu **bàn giao giữa các trạm** (handoff). Mục này nói về
+việc **không để mất dữ liệu làm việc của chính một trạm** — quan trọng nhất
+với Trạm 2 (NH3 Vessel) và Trạm 4 (BOQ), vốn *không có bất kỳ cơ chế lưu trữ
+trình duyệt nào* trước bản vá này (dữ liệu chỉ ở biến JS, mất khi F5/đóng tab).
+Mỗi app expose thêm 2 hàm, tách biệt hoàn toàn với `exportProjectData`/
+`importProjectData`:
+
+```js
+window.App<Xyz>.exportFullBackup()      // -> object, đồng bộ hoặc Promise tuỳ app
+window.App<Xyz>.importFullBackup(data)  // ghi THẲNG vào state — KHÔNG qua modal preview
+```
+
+Khác biệt cố ý so với `importProjectData`: `importFullBackup` ghi thẳng, không
+cần con người xác nhận lại — vì đây là khôi phục **dữ liệu của chính bạn** sau
+sự cố (mất mạng, F5 nhầm, đổi máy), không phải nhận dữ liệu từ trạm khác cần
+kiểm tra chéo.
+
+Nguồn dữ liệu mỗi app trả về khác nhau tuỳ hạ tầng lưu trữ sẵn có:
+- **Trạm 1 (RefrigDesignNH3), Trạm 3 (Pressure Vessel):** đã có IndexedDB —
+  `exportFullBackup()` bọc lại đúng cơ chế export/import toàn bộ đã có sẵn.
+  Riêng Trạm 3 **chưa** chụp được input đang gõ dở ở tab Tính toán nếu chưa
+  bấm "Lưu vào dự án" — giới hạn còn tồn đọng, xem README.
+- **Trạm 2 (NH3 Vessel), Trạm 4 (BOQ):** không có nơi lưu trữ nào từ trước —
+  bản vá này thêm autosave debounce 800ms vào `localStorage` (`nh3vessel_autosave`,
+  `boq_autosave`) mỗi khi tính lại, cộng thêm tự khôi phục khi tải trang nếu
+  phát hiện dữ liệu cũ còn hợp lệ.
+
+Hub Shell gọi `exportFullBackup()` của **mọi trạm đang mở** (không chỉ trạm
+hiện hành) để gộp thành 1 file `.json` duy nhất (nút 💾 trên thanh công cụ),
+và gọi `importFullBackup(data)` cho từng trạm ngay khi trạm đó được mở lần
+đầu sau khi khôi phục từ file (không cần mở đủ cả 4 trạm cùng lúc).
+
 ## 5. Cấu trúc `bundle` (rút gọn, xem code từng hàm export để biết đầy đủ field)
 
 ```jsonc

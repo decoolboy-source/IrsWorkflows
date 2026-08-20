@@ -1991,6 +1991,82 @@ const _ui = {
   }
 };
 
+// ── Autosave — trước đây trạm này KHÔNG lưu gì cả (chỉ ngôn ngữ/cài đặt vận
+// tốc ống), mất trắng khi F5/đóng nhầm tab. Lưu debounce sau mỗi lần tính lại.
+// Chỉ khôi phục các trạm NHẬP TAY (man_*) — trạm nhận từ RDN3 (_state.importedCSt)
+// đã nằm sẵn trong _state nên không cần dựng lại DOM cho trường hợp đó. ──
+const GLOBAL_FIELD_IDS = ['manTc','selSteel','selPhi','inpCc','inpDurHL','inpDurHHL'];
+let _autosaveTimer = null;
+function captureGlobalFields(){
+  const out = {};
+  GLOBAL_FIELD_IDS.forEach(function(id){ const el=document.getElementById(id); if(el) out[id]=el.value; });
+  return out;
+}
+function applyGlobalFields(fields){
+  if(!fields) return;
+  GLOBAL_FIELD_IDS.forEach(function(id){ const el=document.getElementById(id); if(el && fields[id]!=null) el.value=fields[id]; });
+}
+function captureManualStations(){
+  const st0Wrap=document.getElementById('manStation0Wrap');
+  const rows=[];
+  for(let i=0;i<10;i++){
+    const teEl=document.getElementById('man_te_'+i);
+    if(!teEl) { if(i===0) continue; break; }
+    rows.push({
+      i,
+      te: teEl.value, mode: document.getElementById('man_mode_'+i) ? document.getElementById('man_mode_'+i).value : 'q',
+      q: document.getElementById('man_q_'+i) ? document.getElementById('man_q_'+i).value : undefined,
+      vh: document.getElementById('man_vh_'+i) ? document.getElementById('man_vh_'+i).value : undefined,
+      vevap: document.getElementById('man_vevap_'+i) ? document.getElementById('man_vevap_'+i).value : undefined,
+      cycle: document.getElementById('man_cycle_'+i) ? document.getElementById('man_cycle_'+i).value : undefined,
+      ti: document.getElementById('man_ti_'+i) ? document.getElementById('man_ti_'+i).value : undefined,
+      qoil: document.getElementById('man_qoil_'+i) ? document.getElementById('man_qoil_'+i).value : undefined
+    });
+  }
+  return { station0Visible: !!(st0Wrap && st0Wrap.style.display!=='none'), rows };
+}
+function applyManualStations(saved){
+  if(!saved || !saved.rows || !saved.rows.length) return;
+  var st0Wrap = document.getElementById('manStation0Wrap');
+  var st0Hidden = st0Wrap && st0Wrap.style.display === 'none';
+  if(saved.station0Visible && st0Hidden) _ui.addManualStation(); // chỉ gọi khi Trạm 1 THẬT SỰ đang ẩn — addManualStation() không no-op khi đã hiện, gọi thừa sẽ tạo nhầm trạm mới
+  saved.rows.forEach(function(r){
+    if(r.i>0){ while(!document.getElementById('man_te_'+r.i)) _ui.addManualStation(); }
+    const set=function(id,val){ const el=document.getElementById(id); if(el && val!=null) el.value=val; };
+    set('man_te_'+r.i, r.te); set('man_mode_'+r.i, r.mode);
+    set('man_q_'+r.i, r.q); set('man_vh_'+r.i, r.vh); set('man_vevap_'+r.i, r.vevap);
+    set('man_cycle_'+r.i, r.cycle); set('man_ti_'+r.i, r.ti); set('man_qoil_'+r.i, r.qoil);
+    if(_ui.toggleManInputMode) _ui.toggleManInputMode(r.i);
+  });
+}
+function scheduleAutosave(){
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(function(){
+    try{
+      localStorage.setItem('nh3vessel_autosave', JSON.stringify({
+        state: _state, globalFields: captureGlobalFields(),
+        manualStations: _state.importedCSt ? null : captureManualStations(),
+        savedAt: new Date().toISOString()
+      }));
+    }catch(e){}
+  }, 800);
+}
+function restoreAutosave(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem('nh3vessel_autosave')); }catch(e){ return; }
+  if(!saved || !saved.state) return;
+  const hasVessels = saved.state.vessels && saved.state.vessels.length;
+  const hasManual = saved.manualStations && saved.manualStations.rows && saved.manualStations.rows.length;
+  const hasImported = saved.state.importedCSt && saved.state.importedCSt.length;
+  if(!hasVessels && !hasManual && !hasImported) return; // không có gì đáng khôi phục
+  Object.assign(_state, saved.state);
+  applyGlobalFields(saved.globalFields);
+  if(!_state.importedCSt) applyManualStations(saved.manualStations);
+  else _ui.renderImportedStationConfig();
+  _calc.run();
+  _ui.toast('ok', 'Đã tự động khôi phục dữ liệu phiên làm việc trước (' + new Date(saved.savedAt).toLocaleString('vi-VN') + ') — kiểm tra lại trước khi tiếp tục.');
+}
+
 // ── CALC ──
 const _calc = {
   _gv(id){ const e=document.getElementById(id); return e?e.value:''; },
@@ -2464,6 +2540,7 @@ const _calc = {
       _render.warningSummary();
       document.getElementById('btnExport').disabled=false;
       document.getElementById('btnExportHandoff').disabled=false;
+      scheduleAutosave();
     } catch(e){ console.error('Calc error:',e); _ui.alert('Loi tinh toan',e.message); }
   }
 };
@@ -3036,11 +3113,30 @@ window.AppNH3Vessel.ui=_ui;
 window.AppNH3Vessel.calc=_calc;
 window.AppNH3Vessel.handoff=_handoff;
 window.AppNH3Vessel.report=_report;
+// ── Sao lưu/khôi phục toàn bộ — khôi phục CHÍNH dữ liệu của bạn (không qua modal
+// preview như importProjectData, vốn dành cho dữ liệu bàn giao từ trạm khác).
+// Đặt ở đây (trong IIFE chính) vì cần truy cập trực tiếp _state/_calc/_ui —
+// khối alias CONTRACT Mục 5 ở <script> riêng bên dưới KHÔNG có closure này. ──
+window.AppNH3Vessel.exportFullBackup = function(){
+  return { state: JSON.parse(JSON.stringify(_state)), globalFields: captureGlobalFields(),
+    manualStations: _state.importedCSt ? null : captureManualStations() };
+};
+window.AppNH3Vessel.importFullBackup = function(data){
+  if(!data) return;
+  if(data.state) Object.assign(_state, data.state);
+  applyGlobalFields(data.globalFields);
+  if(!_state.importedCSt) applyManualStations(data.manualStations);
+  else _ui.renderImportedStationConfig();
+  _calc.run();
+  _ui.toast('ok', 'Đã khôi phục dữ liệu từ bản sao lưu');
+};
 _ui.updateManCycleOptions();
 // KHÔNG tự động chạy _calc.run() khi tải trang — tránh hiện sẵn 3 bình từ giá trị
 // demo điền sẵn (Te=-32, mDot=0.5...) khi người dùng CHƯA thực sự nhập/nhập gì.
 // Trang sẽ hiện placeholder rỗng cho tới khi người dùng chủ động bấm "Tính toán"
-// hoặc nhập từ RefrigDesignNH3.
+// hoặc nhập từ RefrigDesignNH3. restoreAutosave() tự kiểm tra có dữ liệu thật
+// đã lưu trước đó hay không rồi mới quyết định có gọi _calc.run() hay không.
+restoreAutosave();
 
 })();
 </script>
@@ -3060,6 +3156,8 @@ _ui.updateManCycleOptions();
     if(ta) ta.value = typeof bundle==='string' ? bundle : JSON.stringify(bundle);
     if(NS.handoff.parsePreview) NS.handoff.parsePreview();
   };
+  // NS.exportFullBackup / NS.importFullBackup được định nghĩa trong IIFE chính ở
+  // trên (cần truy cập trực tiếp _state/_calc/_ui, không có trong closure này).
 })();
 </script>
 </body>
