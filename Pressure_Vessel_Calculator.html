@@ -2621,10 +2621,14 @@ window.AppPV = (function(){
     },
 
     /* ---------- EXPORT / IMPORT JSON (toàn bộ: db + projects) ---------- */
+    buildFullBackupPayload(){
+      return { db: state.db, projects: state.projects, settings: state.settings, exportedAt: new Date().toISOString(), version:'2606.05.01' };
+    },
     async exportAllJSON(){
-      const payload = { db: state.db, projects: state.projects, settings: state.settings, exportedAt: new Date().toISOString(), version:'2606.05.01' };
+      const payload = this.buildFullBackupPayload();
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='apppv_backup.json'; a.click();
+      return payload;
     },
     async importAllJSON(payload){
       if(payload.db){
@@ -4825,6 +4829,13 @@ window.AppPV = (function(){
       if(NS.handoff._parseRdn3Preview) NS.handoff._parseRdn3Preview();
     }
   };
+  // ── Sao lưu/khôi phục toàn bộ — khôi phục CHÍNH dữ liệu của bạn, ghi thẳng vào
+  // IndexedDB (khác importProjectData ở trên, dành cho dữ liệu bàn giao từ trạm
+  // khác và luôn qua bước xem trước/xác nhận). Lưu ý: chỉ chụp lại vật liệu/đầu
+  // bình/dự án ĐÃ LƯU — input đang gõ dở ở tab Tính toán mà chưa bấm "Lưu vào dự
+  // án" KHÔNG nằm trong bản sao lưu này (nằm ngoài phạm vi bản vá autosave hiện tại).
+  NS.exportFullBackup = function(){ return NS.admin.buildFullBackupPayload(); };
+  NS.importFullBackup = async function(data){ return await NS.admin.importAllJSON(data); };
 })();
 </script>
 </body>

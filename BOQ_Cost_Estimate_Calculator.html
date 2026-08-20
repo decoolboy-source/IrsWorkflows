@@ -989,6 +989,36 @@ function renderTabGroup(tabName, hostId){
 }
 
 // ── CALC ──
+// ── Autosave — trước đây BOQ KHÔNG lưu gì cả (chỉ localStorage cho ngôn ngữ),
+// mất trắng dữ liệu khi F5/đóng nhầm tab. Lưu debounce vào localStorage sau
+// mỗi lần tính lại (calc.run() là điểm chạm chung của mọi thao tác đổi dữ liệu). ──
+const FORM_FIELD_IDS = ['projectName','inpElecPrice','inpRunH','inpLF','inpMaintPct','inpYears','inpContingencyPct','inpVatPct'];
+let _autosaveTimer = null;
+function captureFormFields(){
+  const out = {};
+  FORM_FIELD_IDS.forEach(function(id){ const el = document.getElementById(id); if(el) out[id] = el.value; });
+  return out;
+}
+function applyFormFields(fields){
+  if(!fields) return;
+  FORM_FIELD_IDS.forEach(function(id){ const el = document.getElementById(id); if(el && fields[id]!=null) el.value = fields[id]; });
+}
+function scheduleAutosave(){
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(function(){
+    try{ localStorage.setItem('boq_autosave', JSON.stringify({ state:_state, fields:captureFormFields(), savedAt:new Date().toISOString() })); }catch(e){}
+  }, 800);
+}
+function restoreAutosave(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem('boq_autosave')); }catch(e){ return; }
+  if(!saved || !saved.state) return;
+  if(!saved.state.items || !saved.state.items.length) return; // không có gì đáng khôi phục
+  Object.assign(_state, saved.state);
+  applyFormFields(saved.fields);
+  ui.toast('ok', 'Đã tự động khôi phục dữ liệu phiên làm việc trước (' + new Date(saved.savedAt).toLocaleString('vi-VN') + ') — kiểm tra lại trước khi tiếp tục.');
+}
+
 const calc = {
   run(){
     renderTabGroup('equipment', 'eqTables');
@@ -996,6 +1026,7 @@ const calc = {
     renderTabGroup('other', 'otherTables');
     this.renderSummary();
     this.renderOpex();
+    scheduleAutosave();
   },
 
   totals(){
@@ -1480,7 +1511,22 @@ window.AppBOQ.importProjectData = function(bundle){
   if(handoff.parsePreview) handoff.parsePreview();
 };
 
+// ── Sao lưu/khôi phục toàn bộ (Hub Shell gọi silent, không qua modal preview —
+// đây là khôi phục CHÍNH dữ liệu của bạn, không phải nhận bàn giao từ trạm khác) ──
+window.AppBOQ.exportFullBackup = function(){
+  return { state: JSON.parse(JSON.stringify(_state)), fields: captureFormFields() };
+};
+window.AppBOQ.importFullBackup = function(data){
+  if(!data) return;
+  if(data.state) Object.assign(_state, data.state);
+  applyFormFields(data.fields);
+  calc.run();
+  ui.toast('ok', 'Đã khôi phục dữ liệu từ bản sao lưu');
+};
+
 applyLanguage(_state.lang);
+restoreAutosave();
+calc.run();
 
 })();
 </script>

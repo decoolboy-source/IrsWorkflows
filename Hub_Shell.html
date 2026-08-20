@@ -224,6 +224,7 @@
       <button id="advanceBtn" title="Xuất dữ liệu trạm hiện tại và chuyển sang trạm kế tiếp">
         <span id="advanceLabel">Xuất &amp; chuyển tiếp →</span>
       </button>
+      <button class="icon-btn" id="btnBackup" title="Sao lưu toàn bộ dự án (.json)" style="position:relative">💾<span id="backupDot" class="status-dot" style="position:absolute;top:3px;right:3px"></span></button>
       <button class="icon-btn" id="btnLang" title="Ngôn ngữ / Language">🌐</button>
       <button class="icon-btn" id="btnInstall" title="Cài đặt ứng dụng" style="display:none">⬇</button>
       <button class="icon-btn" id="btnProjects" title="Quản lý dự án">☰</button>
@@ -259,7 +260,13 @@ var I18N = {
     deliveredToast:'Đã chuyển dữ liệu sang', bgToast:'đã nhận dữ liệu nền từ', confirmedToast:'đã xác nhận nhập dữ liệu từ',
     lastUpdated:'Cập nhật', noProjectsYet:'Chưa có dự án nào', createFirst:'Tạo dự án đầu tiên',
     projectName:'Tên dự án', confirmDeleteProject:'Xoá dự án này? Toàn bộ dữ liệu bàn giao (bundle) giữa các trạm trong Hub sẽ mất — dữ liệu đã lưu BÊN TRONG từng trạm (IndexedDB riêng của từng app) KHÔNG bị ảnh hưởng.',
-    installApp:'Cài ứng dụng lên máy/điện thoại'
+    installApp:'Cài ứng dụng lên máy/điện thoại',
+    backupNow:'Sao lưu ngay (.json)', restoreBackup:'Khôi phục từ file sao lưu (.json)',
+    backupDownloaded:'Đã tải file sao lưu toàn bộ dự án', backupNever:'Chưa sao lưu lần nào',
+    backupReminderTitle:'Nên sao lưu dự án', backupReminderMsg:'Đã lâu chưa tải file sao lưu — bấm nút 💾 trên thanh công cụ để lưu lại phòng khi mất dữ liệu.',
+    beforeUnloadWarning:'Có dữ liệu ở Trạm 2/Trạm 4 chưa được sao lưu ra file — nếu rời trang bây giờ có thể mất dữ liệu (2 trạm này không tự lưu trình duyệt).',
+    restoreDone:'Đã khôi phục dự án từ file sao lưu', restoreInvalid:'File sao lưu không hợp lệ',
+    restorePending:'sẽ được khôi phục khi bạn mở trạm đó'
   },
   en: {
     overview:'Overview', overviewSub:'Track progress across all 4 calculation stations',
@@ -271,7 +278,13 @@ var I18N = {
     deliveredToast:'Data sent to', bgToast:'received background data from', confirmedToast:'confirmed import from',
     lastUpdated:'Updated', noProjectsYet:'No projects yet', createFirst:'Create first project',
     projectName:'Project name', confirmDeleteProject:'Delete this project? All handoff bundles between stations in the Hub will be lost — data already saved INSIDE each station (its own IndexedDB) is not affected.',
-    installApp:'Install app to device'
+    installApp:'Install app to device',
+    backupNow:'Back up now (.json)', restoreBackup:'Restore from backup file (.json)',
+    backupDownloaded:'Full project backup downloaded', backupNever:'Never backed up',
+    backupReminderTitle:'Consider backing up', backupReminderMsg:'It has been a while since your last backup file — click 💾 in the toolbar to save one in case of data loss.',
+    beforeUnloadWarning:'Station 2/Station 4 have data that has not been backed up to a file — leaving now may lose it (these two stations do not persist to the browser on their own).',
+    restoreDone:'Project restored from backup file', restoreInvalid:'Invalid backup file',
+    restorePending:'will be restored when you open that station'
   }
 };
 var lang = localStorage.getItem('hubshell_lang') || 'vi';
@@ -536,6 +549,7 @@ function bindBridge(id, rec){
       rec.ready = true;
       rec.loadingEl.style.display = 'none';
       deliverPending(id);
+      deliverPendingRestore(id);
     }
   }, 150);
 }
@@ -620,7 +634,7 @@ function go(id){
   if(id!=='overview'){
     var rec = mountStation(id);
     rec.wrap.classList.add('active');
-    if(rec.ready) deliverPending(id);
+    if(rec.ready){ deliverPending(id); deliverPendingRestore(id); }
   } else {
     renderOverview();
   }
@@ -653,6 +667,122 @@ function toast(kind, title, msg){
 }
 
 /* ════════════════════════════════════════════════════════════════════
+   7b) BACKUP CENTER — Trạm 2 (NH3 Vessel) và Trạm 4 (BOQ) không tự lưu
+   trình duyệt (không IndexedDB/localStorage cho dữ liệu làm việc) — mất
+   trắng nếu F5/đóng nhầm tab. Hub Shell gom trạng thái đầy đủ của MỌI trạm
+   đang mở (qua exportFullBackup(), không phải chỉ bundle bàn giao) thành
+   1 file .json duy nhất, nhắc định kỳ, và cảnh báo trước khi rời trang nếu
+   có dữ liệu chưa sao lưu ra file.
+   ════════════════════════════════════════════════════════════════════ */
+var NO_PERSISTENCE_STATIONS = ['nh3vessel','boq']; // 2 trạm rủi ro mất dữ liệu cao nhất
+var BACKUP_REMINDER_MS = 15*60*1000; // 15 phút
+
+function lastBackupKey(){ return 'hubshell_last_backup_'+project.id; }
+function getLastBackupAt(){ var v = localStorage.getItem(lastBackupKey()); return v ? parseInt(v,10) : 0; }
+function setLastBackupAt(ts){ localStorage.setItem(lastBackupKey(), String(ts)); renderBackupDot(); }
+
+function collectFullBackup(){
+  var stations = {};
+  STATION_ORDER.forEach(function(id){
+    var rec = mounted[id];
+    if(!rec || !rec.ready) return;
+    var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
+    var ns = win[STATIONS[id].ns];
+    if(!ns || !ns.exportFullBackup) return;
+    try{ var data = ns.exportFullBackup(); if(data) stations[id] = data; }
+    catch(e){ console.error('[HubShell] exportFullBackup lỗi ở', id, e); }
+  });
+  return { format:'hubshell-full-backup', version:1, generatedAt:new Date().toISOString(), hubProject: project, stations: stations };
+}
+
+function hasAnyMountedStationWithData(){
+  return STATION_ORDER.some(function(id){ return mounted[id] && mounted[id].ready; });
+}
+
+function downloadBackup(silent){
+  var snapshot = collectFullBackup();
+  if(!Object.keys(snapshot.stations).length && !silent){
+    toast('info', T('backupNow'), lang==='vi' ? 'Chưa có trạm nào đang mở để sao lưu — mở ít nhất 1 trạm trước.' : 'No station is open yet to back up — open at least one station first.');
+    return;
+  }
+  var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'HubShell_FullBackup_'+project.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setLastBackupAt(Date.now());
+  if(!silent) toast('ok', T('backupNow'), T('backupDownloaded'));
+}
+document.getElementById('btnBackup').addEventListener('click', function(){ downloadBackup(false); });
+
+function renderBackupDot(){
+  var dot = document.getElementById('backupDot');
+  if(!dot) return;
+  var last = getLastBackupAt();
+  var cls = 'pending';
+  if(last){
+    var age = Date.now()-last;
+    cls = age < BACKUP_REMINDER_MS ? 'pass' : age < BACKUP_REMINDER_MS*2 ? 'warn' : 'fail';
+  }
+  dot.className = 'status-dot '+cls;
+  var btn = document.getElementById('btnBackup');
+  if(btn) btn.title = T('backupNow') + ' — ' + (last ? (T('lastUpdated')+' '+new Date(last).toLocaleString(lang==='vi'?'vi-VN':'en-US')) : T('backupNever'));
+}
+
+// ── Nhắc định kỳ (không chặn thao tác) — chỉ nhắc khi có trạm rủi ro cao đang mở ──
+setInterval(function(){
+  if(document.visibilityState!=='visible') return;
+  var last = getLastBackupAt();
+  var risky = NO_PERSISTENCE_STATIONS.some(function(id){ return mounted[id] && mounted[id].ready; });
+  if(!risky) return;
+  if(last && (Date.now()-last) < BACKUP_REMINDER_MS) return;
+  toast('warn', T('backupReminderTitle'), T('backupReminderMsg'));
+  setLastBackupAt(Date.now()); // tránh nhắc liên tục — tính lại mốc "đã nhắc" như đã sao lưu tạm thời
+}, 5*60*1000);
+
+// ── Cảnh báo rời trang nếu Trạm 2/4 (không tự lưu) đang có dữ liệu và
+// backup file gần nhất đã quá cũ (hoặc chưa từng có) ──
+window.addEventListener('beforeunload', function(e){
+  var last = getLastBackupAt();
+  var stale = !last || (Date.now()-last) > BACKUP_REMINDER_MS;
+  var riskyHasData = NO_PERSISTENCE_STATIONS.some(function(id){ return mounted[id] && mounted[id].ready; });
+  if(riskyHasData && stale){
+    e.preventDefault();
+    e.returnValue = T('beforeUnloadWarning');
+    return e.returnValue;
+  }
+});
+
+// ── Khôi phục từ file sao lưu toàn bộ — đọc file, thay project Hub, rồi giao
+// từng phần dữ liệu trạm ngay khi trạm đó được mở (mount) lần đầu ──
+var pendingRestoreStations = null; // {stationId: data} chờ giao khi user mở trạm
+function applyFullBackupFile(snapshot){
+  if(!snapshot || snapshot.format!=='hubshell-full-backup' || !snapshot.stations){ throw new Error('invalid'); }
+  if(snapshot.hubProject){
+    var restored = snapshot.hubProject;
+    restored.id = 'proj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    project = restored;
+    saveProject(project);
+    localStorage.setItem(LS_ACTIVE, project.id);
+  }
+  pendingRestoreStations = snapshot.stations;
+  remountAll();
+  // Giao ngay cho trạm hiện đang mở/sẽ mount đầu tiên (overview) — phần còn lại chờ deliverPendingRestore()
+  var names = Object.keys(pendingRestoreStations).map(function(id){ return STATIONS[id] ? STATIONS[id].short : id; });
+  toast('ok', T('restoreDone'), names.join(', ') + ' — ' + T('restorePending'));
+}
+function deliverPendingRestore(stationId){
+  if(!pendingRestoreStations || !pendingRestoreStations[stationId]) return;
+  var rec = mounted[stationId];
+  if(!rec || !rec.ready) return;
+  var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
+  var ns = win[STATIONS[stationId].ns];
+  if(!ns || !ns.importFullBackup) return;
+  try{ ns.importFullBackup(pendingRestoreStations[stationId]); }catch(e){ console.error('[HubShell] importFullBackup lỗi', stationId, e); }
+  delete pendingRestoreStations[stationId];
+}
+
+/* ════════════════════════════════════════════════════════════════════
    8) MODAL — QUẢN LÝ DỰ ÁN
    ════════════════════════════════════════════════════════════════════ */
 function openModal(html){
@@ -678,6 +808,8 @@ function openProjectsModal(){
     '<div class="modal-body">'+
       rows+
       '<div class="btn-row"><button class="btn primary" id="mNew">'+T('newProject')+'</button></div>'+
+      '<div class="btn-row"><button class="btn primary" id="mBackupNow">💾 '+T('backupNow')+'</button><label class="btn primary" style="text-align:center;cursor:pointer">📂 '+T('restoreBackup')+'<input type="file" id="mRestoreFile" accept=".json" class="hidden"></label></div>'+
+      '<div class="modal-row-sub" style="padding:0 2px 4px">'+(lang==='vi'?'Sao lưu toàn bộ = dữ liệu tính toán thật của mọi trạm đang mở (khuyên dùng thường xuyên, đặc biệt Trạm 2 &amp; 4). Bên dưới chỉ là bản ghi bàn giao nội bộ của Hub, không thay thế được bản sao lưu toàn bộ.':'Full backup = the real working data of every currently open station (use this often, especially Stations 2 &amp; 4). The row below is only the Hub’s internal handoff record — it does not replace a full backup.')+'</div>'+
       '<div class="btn-row"><button class="btn" id="mExport">'+T('exportProject')+'</button><label class="btn" style="text-align:center;cursor:pointer">'+T('importProject')+'<input type="file" id="mImportFile" accept=".json" class="hidden"></label></div>'+
     '</div>'
   );
@@ -690,6 +822,16 @@ function openProjectsModal(){
     localStorage.setItem(LS_ACTIVE, project.id);
     remountAll();
     closeModal();
+  });
+  document.getElementById('mBackupNow').addEventListener('click', function(){ downloadBackup(false); closeModal(); });
+  document.getElementById('mRestoreFile').addEventListener('change', function(e){
+    var f = e.target.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(ev){
+      try{ applyFullBackupFile(JSON.parse(ev.target.result)); closeModal(); }
+      catch(err){ alert(T('restoreInvalid')); }
+    };
+    r.readAsText(f);
   });
   document.getElementById('mExport').addEventListener('click', function(){
     var blob = new Blob([JSON.stringify(project,null,2)], {type:'application/json'});
@@ -760,6 +902,7 @@ function remountAll(){
   Object.keys(mounted).forEach(function(k){ mounted[k].wrap.remove(); });
   mounted = {};
   go('overview');
+  renderBackupDot();
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -769,7 +912,7 @@ document.getElementById('btnLang').addEventListener('click', function(){
   lang = lang==='vi' ? 'en' : 'vi';
   localStorage.setItem('hubshell_lang', lang);
   document.documentElement.lang = lang;
-  renderNav(); renderTopbar();
+  renderNav(); renderTopbar(); renderBackupDot();
   if(activeView==='overview') renderOverview();
 });
 
@@ -801,6 +944,7 @@ ensureProject();
 document.documentElement.lang = lang;
 var startId = (location.hash||'').replace('#','');
 renderNav();
+renderBackupDot();
 if(startId && STATIONS[startId]){ go(startId); } else { go('overview'); }
 
 window.addEventListener('beforeunload', function(){ saveProject(project); });

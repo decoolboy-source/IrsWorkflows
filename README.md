@@ -75,6 +75,26 @@ giao giữa các trạm cho dự án đó). Đây là lớp quản lý **riêng*
 của chính nó) — Hub chỉ nhớ "đã gửi bundle nào cho trạm nào" để tự động điền
 lại nếu bạn quay lại sau.
 
+## Sao lưu — quan trọng, đọc trước khi dùng cho dự án thật
+
+**Trạm 2 (NH3 Vessel) và Trạm 4 (BOQ) không tự lưu trình duyệt** — trước bản
+vá này, dữ liệu chỉ nằm trong bộ nhớ JS và **mất trắng khi F5, đóng nhầm tab,
+hay hết pin/crash trình duyệt**. Bản vá này đã thêm autosave debounce vào
+`localStorage` cho 2 trạm này (tự khôi phục khi mở lại trang), nhưng
+`localStorage` vẫn gắn với 1 trình duyệt/1 thiết bị — xoá cache hoặc đổi máy
+vẫn mất.
+
+**Cách an toàn nhất: bấm nút 💾 (góc trên bên phải) thường xuyên** — nút này
+gom dữ liệu THẬT của mọi trạm đang mở (không chỉ Trạm 2/4) thành 1 file
+`.json` tải về máy, độc lập hoàn toàn với trình duyệt. Hub Shell tự nhắc mỗi
+15 phút nếu phát hiện Trạm 2/4 đang mở mà lâu chưa sao lưu, và cảnh báo trước
+khi đóng tab nếu có dữ liệu chưa kịp lưu ra file. Khôi phục qua nút ☰ → "📂
+Khôi phục từ file sao lưu".
+
+Giới hạn còn tồn đọng: Trạm 3 (Pressure Vessel) chỉ backup được các bình
+**đã bấm "Lưu vào dự án"** — input đang gõ dở ở tab Tính toán mà chưa lưu thì
+chưa nằm trong phạm vi bản vá này.
+
 ## Cập nhật sau này
 
 Khi sửa nội dung 1 trong 4 file trạm hoặc `Hub_Shell.html`, nhớ tăng

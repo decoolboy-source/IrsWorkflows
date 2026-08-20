@@ -1141,28 +1141,30 @@ NS.db = (function(){
   }
 
   // ── Full backup/restore (.json) ──
-  async function exportAllJSON(){
+  async function buildFullBackup(){
+    // Ép flush state dự án đang mở xuống IndexedDB trước khi đọc — tránh lệch
+    // tối đa 1.2s so với autosave debounce (xem module autosave phía trên).
+    if(currentProjectId) await saveCurrentProjectState(true);
     const projects = await listProjects();
     const catalog = {};
     for(const cat of Object.keys(NS.calc.DB)) catalog[cat] = NS.calc.DB[cat];
-    const backup = {
+    return {
       app:'RefrigDesignNH3', version:'2606.02.01', exportedAt:new Date().toISOString(),
       projects, catalog
     };
+  }
+
+  async function exportAllJSON(){
+    const backup = await buildFullBackup();
     const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `RefrigDesignNH3_Backup_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
+    return backup;
   }
 
-  async function importAllJSON(file){
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if(data.app !== 'RefrigDesignNH3'){
-      alert('File backup không hợp lệ — không phải định dạng RefrigDesignNH3.');
-      return;
-    }
+  async function restoreFullBackup(data){
     if(data.catalog){
       for(const cat of Object.keys(data.catalog)){
         NS.calc.DB[cat] = data.catalog[cat];
@@ -1172,14 +1174,25 @@ NS.db = (function(){
     if(data.projects){
       for(const p of data.projects) await put('projects', p);
     }
-    alert(`Đã khôi phục ${data.projects?.length||0} dự án và toàn bộ catalog.`);
     await renderProjectList();
     NS.admin.renderAllTables();
+  }
+
+  async function importAllJSON(file){
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(data.app !== 'RefrigDesignNH3'){
+      alert('File backup không hợp lệ — không phải định dạng RefrigDesignNH3.');
+      return;
+    }
+    await restoreFullBackup(data);
+    alert(`Đã khôi phục ${data.projects?.length||0} dự án và toàn bộ catalog.`);
   }
 
   return {
     open, put, get, getAll, del,
     listProjects, createProject, saveCurrentProjectState, loadProject, deleteProject,
+    buildFullBackup, restoreFullBackup,
     openRename, saveRename, renderProjectList, _openRenameById, _confirmDelete,
     saveCatalog, loadCatalog, exportAllJSON, importAllJSON,
     syncCatalogVersion, getSavedCatalogVersion,
@@ -5223,6 +5236,14 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
     var ta = document.getElementById('handoffJsonInput');
     if(ta) ta.value = typeof bundle==='string' ? bundle : JSON.stringify(bundle);
     if(NS.handoff.parseAndPreview) NS.handoff.parseAndPreview();
+  };
+  // ── Sao lưu/khôi phục toàn bộ — khôi phục CHÍNH dữ liệu của bạn, ghi thẳng
+  // vào IndexedDB (khác importProjectData ở trên, vốn dành cho dữ liệu bàn giao
+  // từ trạm khác và luôn qua bước xem trước/xác nhận) ──
+  NS.exportFullBackup = async function(){ return await NS.db.buildFullBackup(); };
+  NS.importFullBackup = async function(data){
+    await NS.db.restoreFullBackup(data);
+    if(NS.ui) NS.ui.toast('ok', 'Đã khôi phục dữ liệu từ bản sao lưu');
   };
 })();
 </script>
