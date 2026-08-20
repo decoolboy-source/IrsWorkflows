@@ -290,6 +290,11 @@ var I18N = {
 var lang = localStorage.getItem('hubshell_lang') || 'vi';
 function T(k){ return (I18N[lang] && I18N[lang][k]) || k; }
 
+// Version của riêng lớp điều phối Hub Shell — độc lập với version từng trạm
+// (mỗi trạm tự quản version của mình, xem PROJECT_DATA_CONTRACT.md). Tăng số
+// này + ghi vào CHANGELOG.md mỗi khi Hub_Shell.html có thay đổi hành vi.
+var HUB_SHELL_VERSION = '1.2.0';
+
 var STATIONS = {
   refrigdesign:   { file:'RefrigDesignNH3.html',            ns:'RefrigDesignNH3', num:1, short:'Trạm 1', label:'RefrigDesignNH3',            desc:'Chu trình lạnh NH3 · máy nén · dàn ngưng · thiết bị phụ tải', accent:'cyan'    },
   nh3vessel:      { file:'NH3_Vessel_Calculator.html',      ns:'AppNH3Vessel',   num:2, short:'Trạm 2', label:'NH3 Vessel Calculator',       desc:'Sizing sơ bộ bình chứa/trung gian/economizer NH3',            accent:'green'   },
@@ -400,6 +405,7 @@ function renderNav(){
     if(os.hasIncomingPending && dotClass==='pending') dotClass='ready';
     html += navItem(id, String(s.num), s.label, s.short, dotClass+pulse, s.accent);
   });
+  html += '<div class="nav-foot"><div style="font-size:9.5px;color:var(--t3);padding:4px 8px">Hub Shell v'+HUB_SHELL_VERSION+'</div></div>';
   nav.innerHTML = html;
   nav.querySelectorAll('.nav-item').forEach(function(el){
     el.addEventListener('click', function(){ go(el.dataset.id); });
