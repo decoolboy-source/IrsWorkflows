@@ -103,8 +103,12 @@
   /* ───────── Content area ───────── */
   #content{flex:1; min-height:0; position:relative}
   #view-overview{position:absolute; inset:0; overflow-y:auto; padding:22px 26px 60px}
-  #frames{position:absolute; inset:0}
-  .frame-wrap{position:absolute; inset:0; display:none}
+  /* #frames luôn phủ kín #content kể cả khi rỗng (đang ở Tổng quan, chưa
+     mở trạm nào) — pointer-events:none để không chặn click/lăn chuột lên
+     #view-overview bên dưới. .frame-wrap trả lại pointer-events:auto vì
+     pointer-events được kế thừa xuống con mặc định. */
+  #frames{position:absolute; inset:0; pointer-events:none}
+  .frame-wrap{position:absolute; inset:0; display:none; pointer-events:auto}
   .frame-wrap.active{display:block}
   .frame-wrap iframe{width:100%; height:100%; border:0; background:#0d1526}
   .frame-loading{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; background:var(--bg); color:var(--t3); font-size:12px}
