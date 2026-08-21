@@ -80,11 +80,12 @@ test.describe('Backup Center — autosave & sao lưu/khôi phục', () => {
     ]);
     const backupPath = await download.path();
 
-    // Tạo dự án Hub MỚI (rỗng) rồi khôi phục từ file vừa tải
-    page.once('dialog', (d) => d.accept('Dự án khôi phục (test)'));
+    // Tạo dự án MỚI (dùng chung, tạo thật bên trong Trạm 1) rồi khôi phục từ file vừa tải
     await page.click('#btnProjects');
     await page.click('#mNew');
-    await page.waitForTimeout(400);
+    await page.fill('#npInputName', 'Dự án khôi phục (test)');
+    await page.click('#npCreate');
+    await expect(page.locator('#crumb b')).toContainText('RefrigDesignNH3', { timeout: 15_000 });
 
     await page.click('#btnProjects');
     await page.setInputFiles('#mRestoreFile', backupPath);

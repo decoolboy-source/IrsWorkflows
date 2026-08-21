@@ -265,7 +265,7 @@ var I18N = {
     overview:'Tổng quan', overviewSub:'Theo dõi tiến độ toàn bộ dự án qua 4 trạm tính toán',
     openStation:'Mở trạm →', notStarted:'Chưa có dữ liệu', ready:'Sẵn sàng nhận', pass:'Đạt', warn:'Cảnh báo', fail:'Không đạt',
     projects:'Dự án', newProject:'+ Dự án mới', rename:'Đổi tên', duplicate:'Nhân bản', deleteProject:'Xoá dự án',
-    exportProject:'Xuất toàn bộ (.json)', importProject:'Nhập dự án (.json)', close:'Đóng', save:'Lưu',
+    close:'Đóng', save:'Lưu',
     advance:'Xuất & chuyển tiếp →', loadingStation:'Đang tải trạm…', backToOverview:'← Tổng quan',
     emptyHint:'Bắt đầu từ <b>Trạm 1 — RefrigDesignNH3</b>: chạy tính toán chu trình lạnh, rồi bấm nút "Xuất &amp; chuyển tiếp" (hoặc nút xuất bên trong trạm) — dữ liệu sẽ tự động điền sẵn ở trạm kế tiếp, bạn chỉ cần xem lại và bấm xác nhận.',
     deliveredToast:'Đã chuyển dữ liệu sang', bgToast:'đã nhận dữ liệu nền từ', confirmedToast:'đã xác nhận nhập dữ liệu từ',
@@ -283,7 +283,7 @@ var I18N = {
     overview:'Overview', overviewSub:'Track progress across all 4 calculation stations',
     openStation:'Open station →', notStarted:'No data yet', ready:'Ready to receive', pass:'Pass', warn:'Warning', fail:'Fail',
     projects:'Projects', newProject:'+ New project', rename:'Rename', duplicate:'Duplicate', deleteProject:'Delete project',
-    exportProject:'Export all (.json)', importProject:'Import project (.json)', close:'Close', save:'Save',
+    close:'Close', save:'Save',
     advance:'Export & advance →', loadingStation:'Loading station…', backToOverview:'← Overview',
     emptyHint:'Start at <b>Station 1 — RefrigDesignNH3</b>: run the refrigeration cycle calculation, then click "Export &amp; advance" (or the station’s own export button) — data will auto-fill at the next station; just review and confirm.',
     deliveredToast:'Data sent to', bgToast:'received background data from', confirmedToast:'confirmed import from',
@@ -304,7 +304,7 @@ function T(k){ return (I18N[lang] && I18N[lang][k]) || k; }
 // Version của riêng lớp điều phối Hub Shell — độc lập với version từng trạm
 // (mỗi trạm tự quản version của mình, xem PROJECT_DATA_CONTRACT.md). Tăng số
 // này + ghi vào CHANGELOG.md mỗi khi Hub_Shell.html có thay đổi hành vi.
-var HUB_SHELL_VERSION = '1.2.0';
+var HUB_SHELL_VERSION = '1.3.0';
 
 var STATIONS = {
   refrigdesign:   { file:'RefrigDesignNH3.html',            ns:'RefrigDesignNH3', num:1, short:'Trạm 1', label:'RefrigDesignNH3',            desc:'Chu trình lạnh NH3 · máy nén · dàn ngưng · thiết bị phụ tải', accent:'cyan'    },
@@ -324,41 +324,84 @@ var FANOUT = {
 };
 
 /* ════════════════════════════════════════════════════════════════════
-   2) STATE + PERSISTENCE (đa dự án ở cấp Hub — độc lập với multi-project
-      nội bộ của từng trạm, chỉ lưu các bundle bàn giao)
+   2) STATE + PERSISTENCE
+   Nguồn sự thật DUY NHẤT cho "dự án" là CSDL đa dự án thật của Trạm 1
+   (RefrigDesignNH3, IndexedDB) — trước đây Hub tự tạo/lưu 1 danh sách dự án
+   RIÊNG song song (hubshell_projects, id khác hoàn toàn), khiến 1 dự án
+   "Abc" ở Hub và "Abc" bên trong Trạm 1 là 2 bản ghi khác nhau, dễ lệch
+   nhau. Giờ Hub chỉ giữ "sổ theo dõi bàn giao" (bundles/delivered/confirmed
+   — để hiện badge PASS/WARN/FAIL) cho MỖI dự án thật của Trạm 1, khoá đúng
+   theo ID thật đó — không còn CRUD dự án riêng ở cấp Hub nữa.
    ════════════════════════════════════════════════════════════════════ */
-var LS_INDEX = 'hubshell_projects';
-var LS_ACTIVE = 'hubshell_active_project';
 function LS_PROJECT(id){ return 'hubshell_project_'+id; }
+var LS_ACTIVE = 'hubshell_active_project'; // chỉ để nhớ dự án đang mở khi F5, không phải nguồn sự thật
 
-function loadIndex(){ try{ return JSON.parse(localStorage.getItem(LS_INDEX))||[]; }catch(e){ return []; } }
-function saveIndex(idx){ localStorage.setItem(LS_INDEX, JSON.stringify(idx)); }
 function loadProject(id){ try{ return JSON.parse(localStorage.getItem(LS_PROJECT(id))); }catch(e){ return null; } }
-function saveProject(p){ p.updatedAt = Date.now(); localStorage.setItem(LS_PROJECT(p.id), JSON.stringify(p));
-  var idx = loadIndex(); var row = idx.find(function(r){return r.id===p.id;});
-  if(row){ row.name=p.name; row.updatedAt=p.updatedAt; } else { idx.push({id:p.id,name:p.name,updatedAt:p.updatedAt}); }
-  saveIndex(idx);
+function saveProject(p){
+  if(!p || !p.id) return; // dự án rỗng (chưa tạo gì ở Trạm 1) — không có gì để lưu
+  p.updatedAt = Date.now();
+  localStorage.setItem(LS_PROJECT(p.id), JSON.stringify(p));
 }
-function newProject(name){
-  return { id:'proj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name: name||'Dự án mới',
+function emptyProject(id, name){
+  return { id:id||null, name: name||(lang==='vi'?'Chưa có dự án':'No project'),
     createdAt:Date.now(), updatedAt:Date.now(), bundles:{}, delivered:{}, confirmed:{} };
 }
 
-var project = null;
-function ensureProject(){
-  var idx = loadIndex();
-  var activeId = localStorage.getItem(LS_ACTIVE);
-  if(activeId && idx.find(function(r){return r.id===activeId;})){
-    project = loadProject(activeId);
-  }
-  if(!project){
-    if(idx.length){ project = loadProject(idx[0].id); }
-  }
-  if(!project){
-    project = newProject(lang==='vi' ? 'Dự án 1' : 'Project 1');
-    saveProject(project);
-  }
-  localStorage.setItem(LS_ACTIVE, project.id);
+// ── Iframe Trạm 1 luôn được mount ngầm (ẩn) ngay từ lúc Hub khởi động —
+// xem mountStation()/remountAll() — để CSDL dự án của nó luôn tra cứu được
+// dù người dùng đang xem màn nào. waitStation1Ready đợi tới khi bridge sẵn
+// sàng (namespace RefrigDesignNH3.db lộ ra window của iframe). ──
+function getStation1NS(){
+  var rec = mounted['refrigdesign'];
+  if(!rec || !rec.ready) return null;
+  try{ return rec.iframe.contentWindow.RefrigDesignNH3; }catch(e){ return null; }
+}
+// Sẵn sàng = cầu nối (bridge) đã lộ namespace RA NGOÀI window của iframe
+// VÀ CSDL IndexedDB nội bộ của Trạm 1 đã mở xong (2 mốc khác nhau — mốc
+// đầu chỉ báo script đã chạy tới đoạn gán window.RefrigDesignNH3, còn kết
+// nối IndexedDB (mở async, dùng bởi listProjects/createProject...) có thể
+// vẫn đang mở dở). Gọi ns.db.open() lại ở đây không mở 2 lần — db.open()
+// tự nhớ lại promise cũ, xem RefrigDesignNH3.html. ──
+function waitStation1Ready(timeoutMs){
+  return new Promise(function(resolve){
+    var rec = mountStation('refrigdesign');
+    if(rec.ready){ resolve(rec); return; }
+    var elapsed = 0;
+    var iv = setInterval(function(){
+      elapsed += 100;
+      if(rec.ready){ clearInterval(iv); resolve(rec); }
+      else if(elapsed>=timeoutMs){ clearInterval(iv); resolve(rec.ready?rec:null); }
+    }, 100);
+  }).then(function(rec){
+    if(!rec) return null;
+    var ns = getStation1NS();
+    if(!ns || !ns.db) return null;
+    return Promise.resolve(ns.db.open()).then(function(){ return rec; });
+  });
+}
+
+var project = emptyProject(null, lang==='vi'?'Đang tải…':'Loading…');
+// Đồng bộ project (sổ bàn giao của Hub) theo đúng ID dự án thật đang mở ở
+// Trạm 1 — giữ lại bundles/delivered/confirmed cũ nếu ID đó đã từng có.
+function syncProjectFromStation1(id, list){
+  if(!id){ project = emptyProject(null); return; }
+  var row = (list||[]).filter(function(r){ return r.id===id; })[0];
+  var name = row ? row.name : ((project && project.id===id) ? project.name : (lang==='vi'?'Dự án':'Project'));
+  project = loadProject(id) || emptyProject(id, name);
+  project.id = id;
+  project.name = name;
+  saveProject(project);
+  localStorage.setItem(LS_ACTIVE, id);
+}
+function ensureProjectFromStation1(){
+  return waitStation1Ready(15000).then(function(){
+    var ns = getStation1NS();
+    if(!ns || !ns.db){ project = emptyProject(null); return; }
+    return Promise.resolve(ns.db.listProjects()).then(function(list){
+      var activeId = ns.db.currentProjectId || (list[0] && list[0].id) || null;
+      syncProjectFromStation1(activeId, list);
+    });
+  }).catch(function(e){ console.error('[HubShell] ensureProjectFromStation1 lỗi', e); project = emptyProject(null); });
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -526,15 +569,14 @@ function renderOverview(){
 
 // ── Tạo dự án mới ngay từ Tổng quan — trước đây phải mở Trạm 1 và tự bấm
 // qua modal "Quản lý Dự án" riêng của trạm đó mới bắt đầu được. Giờ tạo 1
-// lần ở đây: vừa tạo dự án Hub (theo dõi bàn giao), vừa tự tạo luôn dự án
-// cùng tên bên trong Trạm 1 (nơi thực sự chứa dữ liệu tính toán), rồi mở
-// thẳng Trạm 1 ra để bắt đầu nhập liệu. ──
+// lần ở đây, dùng chung cho mọi trạm (xem mục 2 — Trạm 1 là nguồn sự thật
+// duy nhất), rồi mở thẳng Trạm 1 ra để bắt đầu nhập liệu. ──
 function openNewProjectModal(){
   openModal(
     '<div class="modal-head"><b>'+T('newProject').replace(/^\+\s*/,'')+'</b><button class="icon-btn" id="npClose">✕</button></div>'+
     '<div class="modal-body">'+
       '<div class="field"><label>'+T('projectName')+'</label><input type="text" id="npInputName" class="field-input" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--t1);font-size:12.5px" placeholder="'+(lang==='vi'?'VD: Kho lạnh ABC':'e.g. ABC Cold Storage')+'"></div>'+
-      '<div class="modal-row-sub" style="padding:0 2px">'+(lang==='vi'?'Sẽ tạo dự án này ở Hub và tự động mở sẵn ở Trạm 1 (RefrigDesignNH3) để bạn bắt đầu nhập liệu ngay.':'Creates this project in the Hub and automatically opens it in Station 1 (RefrigDesignNH3) so you can start entering data right away.')+'</div>'+
+      '<div class="modal-row-sub" style="padding:0 2px">'+(lang==='vi'?'Dự án dùng chung cho cả 4 trạm. Sẽ mở thẳng Trạm 1 (RefrigDesignNH3) để bạn bắt đầu nhập liệu ngay.':'This project is shared across all 4 stations. Opens Station 1 (RefrigDesignNH3) right away so you can start entering data.')+'</div>'+
       '<div class="btn-row"><button class="btn primary" id="npCreate">'+T('newProject').replace(/^\+\s*/,'')+'</button></div>'+
     '</div>'
   );
@@ -551,23 +593,21 @@ function openNewProjectModal(){
 }
 
 function createProjectAndOpenStation1(name){
-  project = newProject(name);
-  saveProject(project);
-  localStorage.setItem(LS_ACTIVE, project.id);
-  remountAll();
   go('refrigdesign');
-  var check = setInterval(function(){
-    var rec = mounted['refrigdesign'];
-    if(rec && rec.ready){
-      clearInterval(check);
-      var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
-      var ns = win && win.RefrigDesignNH3;
-      if(ns && ns.db && ns.db.createProject){
-        try{ ns.db.createProject(name); }catch(e){ console.error('[HubShell] createProject lỗi', e); }
-      }
+  waitStation1Ready(15000).then(function(rec){
+    var ns = getStation1NS();
+    if(!rec || !ns || !ns.db || !ns.db.createProject){
+      toast('err', T('projects'), lang==='vi'?'Không mở được Trạm 1 để tạo dự án — thử lại.':'Could not open Station 1 to create the project — try again.');
+      return;
     }
-  }, 120);
-  setTimeout(function(){ clearInterval(check); }, 15000);
+    return Promise.resolve(ns.db.createProject(name)).then(function(){
+      return Promise.resolve(ns.db.listProjects());
+    }).then(function(list){
+      syncProjectFromStation1(ns.db.currentProjectId, list);
+      renderNav();
+      if(activeView==='overview') renderOverview();
+    });
+  }).catch(function(e){ console.error('[HubShell] createProjectAndOpenStation1 lỗi', e); });
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -584,7 +624,13 @@ function mountStation(id){
   loading.innerHTML = '<div class="spinner"></div><div>'+T('loadingStation')+'</div>';
   var iframe = document.createElement('iframe');
   iframe.src = STATIONS[id].file;
-  iframe.setAttribute('loading','lazy');
+  // KHÔNG dùng loading="lazy": nó dựa vào việc phần tử có gần viewport hay
+  // không để quyết định có tải hay không — Trạm 1 giờ được mount NGẦM khi
+  // còn display:none (chưa .active), nên với loading="lazy" trình duyệt có
+  // thể trì hoãn tải VÔ THỜI HẠN vì phần tử display:none không bao giờ được
+  // coi là "gần viewport". Hub Shell đã tự quản lý việc mount theo nhu cầu ở
+  // tầng JS (mountStation() chỉ tạo iframe khi thực sự cần) nên không cần
+  // trình duyệt lazy-load thêm 1 lớp nữa.
   iframe.title = STATIONS[id].label;
   wrap.appendChild(loading);
   wrap.appendChild(iframe);
@@ -605,6 +651,21 @@ function bindBridge(id, rec){
 
   win.addEventListener('HUB:export', function(ev){ handleExport(id, ev.detail||{}); });
   win.addEventListener('HUB:import', function(ev){ handleImport(id, ev.detail||{}); });
+  // Trạm 1 tự báo mỗi khi dự án đang mở đổi (tạo/mở/xoá/đổi tên) — kể cả khi
+  // người dùng thao tác thẳng trong modal "Quản lý Dự án" riêng của nó, KHÔNG
+  // qua Tổng quan của Hub. Không đồng bộ lại thì Hub sẽ hiển thị sai tên/ID
+  // dự án đang mở (xem mục 2 — Trạm 1 là nguồn sự thật duy nhất). ──
+  if(id==='refrigdesign'){
+    win.addEventListener('HUB:projectChanged', function(){
+      var ns = win.RefrigDesignNH3;
+      if(!ns || !ns.db) return;
+      Promise.resolve(ns.db.listProjects()).then(function(list){
+        syncProjectFromStation1(ns.db.currentProjectId, list);
+        renderNav();
+        if(activeView==='overview') renderOverview();
+      });
+    });
+  }
 
   // Poll cho tới khi namespace + exportProjectData/importProjectData sẵn sàng (app tự khởi tạo async)
   var tries = 0;
@@ -749,18 +810,26 @@ function lastBackupKey(){ return 'hubshell_last_backup_'+project.id; }
 function getLastBackupAt(){ var v = localStorage.getItem(lastBackupKey()); return v ? parseInt(v,10) : 0; }
 function setLastBackupAt(ts){ localStorage.setItem(lastBackupKey(), String(ts)); renderBackupDot(); }
 
+// ── exportFullBackup() của Trạm 1/3 là async (đọc IndexedDB) — trước đây
+// hàm này không await, nên với 2 trạm đó `stations[id]` bị gán thẳng 1
+// Promise chưa resolve, JSON.stringify(Promise) ra "{}" — file backup tải
+// về ÂM THẦM RỖNG cho đúng 2 trạm có dữ liệu quan trọng nhất cần backup.
+// Station 2/4 (exportFullBackup đồng bộ, không qua IndexedDB) không bị ảnh
+// hưởng nên lỗi không lộ ra khi chỉ test 2 trạm đó. ──
 function collectFullBackup(){
   var stations = {};
-  STATION_ORDER.forEach(function(id){
+  var jobs = STATION_ORDER.map(function(id){
     var rec = mounted[id];
-    if(!rec || !rec.ready) return;
-    var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
+    if(!rec || !rec.ready) return null;
+    var win; try{ win = rec.iframe.contentWindow; }catch(e){ return null; }
     var ns = win[STATIONS[id].ns];
-    if(!ns || !ns.exportFullBackup) return;
-    try{ var data = ns.exportFullBackup(); if(data) stations[id] = data; }
-    catch(e){ console.error('[HubShell] exportFullBackup lỗi ở', id, e); }
+    if(!ns || !ns.exportFullBackup) return null;
+    return Promise.resolve(ns.exportFullBackup()).then(function(data){ if(data) stations[id] = data; })
+      .catch(function(e){ console.error('[HubShell] exportFullBackup lỗi ở', id, e); });
+  }).filter(Boolean);
+  return Promise.all(jobs).then(function(){
+    return { format:'hubshell-full-backup', version:1, generatedAt:new Date().toISOString(), hubProject: project, stations: stations };
   });
-  return { format:'hubshell-full-backup', version:1, generatedAt:new Date().toISOString(), hubProject: project, stations: stations };
 }
 
 function hasAnyMountedStationWithData(){
@@ -768,18 +837,19 @@ function hasAnyMountedStationWithData(){
 }
 
 function downloadBackup(silent){
-  var snapshot = collectFullBackup();
-  if(!Object.keys(snapshot.stations).length && !silent){
-    toast('info', T('backupNow'), lang==='vi' ? 'Chưa có trạm nào đang mở để sao lưu — mở ít nhất 1 trạm trước.' : 'No station is open yet to back up — open at least one station first.');
-    return;
-  }
-  var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'HubShell_FullBackup_'+project.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setLastBackupAt(Date.now());
-  if(!silent) toast('ok', T('backupNow'), T('backupDownloaded'));
+  collectFullBackup().then(function(snapshot){
+    if(!Object.keys(snapshot.stations).length && !silent){
+      toast('info', T('backupNow'), lang==='vi' ? 'Chưa có trạm nào đang mở để sao lưu — mở ít nhất 1 trạm trước.' : 'No station is open yet to back up — open at least one station first.');
+      return;
+    }
+    var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'HubShell_FullBackup_'+project.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setLastBackupAt(Date.now());
+    if(!silent) toast('ok', T('backupNow'), T('backupDownloaded'));
+  });
 }
 document.getElementById('btnBackup').addEventListener('click', function(){ downloadBackup(false); });
 
@@ -826,13 +896,10 @@ window.addEventListener('beforeunload', function(e){
 var pendingRestoreStations = null; // {stationId: data} chờ giao khi user mở trạm
 function applyFullBackupFile(snapshot){
   if(!snapshot || snapshot.format!=='hubshell-full-backup' || !snapshot.stations){ throw new Error('invalid'); }
-  if(snapshot.hubProject){
-    var restored = snapshot.hubProject;
-    restored.id = 'proj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    project = restored;
-    saveProject(project);
-    localStorage.setItem(LS_ACTIVE, project.id);
-  }
+  // Ghi chú: bản backup cũ có thể còn field snapshot.hubProject (sổ bàn giao
+  // riêng của Hub từ trước khi hợp nhất dự án) — bỏ qua có chủ đích, vì dự
+  // án thật nằm trong snapshot.stations.refrigdesign và sẽ được đồng bộ lại
+  // đúng ID thật ngay bên dưới, sau khi Trạm 1 khôi phục xong dữ liệu của nó.
   pendingRestoreStations = snapshot.stations;
   remountAll();
   // Giao ngay cho trạm hiện đang mở/sẽ mount đầu tiên (overview) — phần còn lại chờ deliverPendingRestore()
@@ -846,8 +913,27 @@ function deliverPendingRestore(stationId){
   var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
   var ns = win[STATIONS[stationId].ns];
   if(!ns || !ns.importFullBackup) return;
-  try{ ns.importFullBackup(pendingRestoreStations[stationId]); }catch(e){ console.error('[HubShell] importFullBackup lỗi', stationId, e); }
+  var data = pendingRestoreStations[stationId];
   delete pendingRestoreStations[stationId];
+  Promise.resolve(ns.importFullBackup(data)).then(function(){
+    if(stationId!=='refrigdesign') return;
+    // Sau khi khôi phục xong dữ liệu THẬT của Trạm 1 (nguồn sự thật của dự
+    // án) — nếu chưa có dự án nào đang mở (VD khôi phục trên máy/trình
+    // duyệt mới), tự mở dự án cập nhật gần nhất thay vì để Overview trống.
+    return Promise.resolve(ns.db.listProjects()).then(function(list){
+      var activeId = ns.db.currentProjectId;
+      if(!activeId && list && list.length){
+        list = list.slice().sort(function(a,b){ return new Date(b.updatedAt)-new Date(a.updatedAt); });
+        activeId = list[0].id;
+        return Promise.resolve(ns.db.loadProject(activeId)).then(function(){ return list; });
+      }
+      return list;
+    }).then(function(list){
+      syncProjectFromStation1(ns.db.currentProjectId, list);
+      renderNav();
+      if(activeView==='overview') renderOverview();
+    });
+  }).catch(function(e){ console.error('[HubShell] importFullBackup lỗi', stationId, e); });
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -860,36 +946,49 @@ function openModal(html){
 function closeModal(){ document.getElementById('modalBackdrop').classList.remove('open'); }
 document.getElementById('modalBackdrop').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
 
+// ── Quản lý dự án dùng chung cho cả 4 trạm — đọc/ghi thẳng qua CSDL thật
+// của Trạm 1 (xem mục 2), không còn danh sách riêng của Hub nữa. ──
 function openProjectsModal(){
-  var idx = loadIndex().sort(function(a,b){ return b.updatedAt-a.updatedAt; });
-  var rows = idx.map(function(r){
-    return '<div class="modal-row'+(r.id===project.id?' selected':'')+'" data-id="'+r.id+'">'+
-      '<div><div class="modal-row-title">'+esc(r.name)+'</div><div class="modal-row-sub">'+new Date(r.updatedAt).toLocaleString(lang==='vi'?'vi-VN':'en-US')+'</div></div>'+
+  waitStation1Ready(15000).then(function(rec){
+    var ns = getStation1NS();
+    if(!rec || !ns || !ns.db){
+      openModal(
+        '<div class="modal-head"><b>'+T('projects')+'</b><button class="icon-btn" id="mClose">✕</button></div>'+
+        '<div class="modal-body"><div class="modal-row-sub" style="padding:8px 2px">'+(lang==='vi'?'Đang chờ Trạm 1 (RefrigDesignNH3) sẵn sàng — thử lại sau vài giây.':'Waiting for Station 1 (RefrigDesignNH3) to be ready — try again in a few seconds.')+'</div></div>'
+      );
+      document.getElementById('mClose').addEventListener('click', closeModal);
+      return;
+    }
+    return Promise.resolve(ns.db.listProjects()).then(function(list){
+      renderProjectsModalBody(ns, (list||[]).slice().sort(function(a,b){ return new Date(b.updatedAt)-new Date(a.updatedAt); }));
+    });
+  });
+}
+function renderProjectsModalBody(ns, list){
+  var activeId = ns.db.currentProjectId;
+  var rows = list.map(function(p){
+    return '<div class="modal-row'+(p.id===activeId?' selected':'')+'" data-id="'+p.id+'">'+
+      '<div><div class="modal-row-title">'+esc(p.name)+'</div><div class="modal-row-sub">'+new Date(p.updatedAt).toLocaleString(lang==='vi'?'vi-VN':'en-US')+'</div></div>'+
       '<div style="display:flex;gap:6px">'+
-        '<button class="btn-icon-sm" data-act="rename" data-id="'+r.id+'" title="'+T('rename')+'">✎</button>'+
-        '<button class="btn-icon-sm" data-act="del" data-id="'+r.id+'" title="'+T('deleteProject')+'">🗑</button>'+
+        '<button class="btn-icon-sm" data-act="rename" data-id="'+p.id+'" title="'+T('rename')+'">✎</button>'+
+        '<button class="btn-icon-sm" data-act="del" data-id="'+p.id+'" title="'+T('deleteProject')+'">🗑</button>'+
       '</div></div>';
   }).join('') || '<div class="modal-row-sub" style="padding:8px 2px">'+T('noProjectsYet')+'</div>';
 
   openModal(
     '<div class="modal-head"><b>'+T('projects')+'</b><button class="icon-btn" id="mClose">✕</button></div>'+
     '<div class="modal-body">'+
+      '<div class="modal-row-sub" style="padding:0 2px 6px">'+(lang==='vi'?'Dùng chung cho mọi trạm — tạo/đổi/xoá ở đây áp dụng cho cả Trạm 1-4.':'Shared across every station — create/switch/delete here applies to Stations 1-4 alike.')+'</div>'+
       rows+
       '<div class="btn-row"><button class="btn primary" id="mNew">'+T('newProject')+'</button></div>'+
       '<div class="btn-row"><button class="btn primary" id="mBackupNow">💾 '+T('backupNow')+'</button><label class="btn primary" style="text-align:center;cursor:pointer">📂 '+T('restoreBackup')+'<input type="file" id="mRestoreFile" accept=".json" class="hidden"></label></div>'+
-      '<div class="modal-row-sub" style="padding:0 2px 4px">'+(lang==='vi'?'Sao lưu toàn bộ = dữ liệu tính toán thật của mọi trạm đang mở (khuyên dùng thường xuyên, đặc biệt Trạm 2 &amp; 4). Bên dưới chỉ là bản ghi bàn giao nội bộ của Hub, không thay thế được bản sao lưu toàn bộ.':'Full backup = the real working data of every currently open station (use this often, especially Stations 2 &amp; 4). The row below is only the Hub’s internal handoff record — it does not replace a full backup.')+'</div>'+
-      '<div class="btn-row"><button class="btn" id="mExport">'+T('exportProject')+'</button><label class="btn" style="text-align:center;cursor:pointer">'+T('importProject')+'<input type="file" id="mImportFile" accept=".json" class="hidden"></label></div>'+
+      '<div class="modal-row-sub" style="padding:0 2px 4px">'+(lang==='vi'?'Sao lưu toàn bộ = dữ liệu tính toán thật của mọi trạm đang mở (khuyên dùng thường xuyên, đặc biệt Trạm 2 &amp; 4).':'Full backup = the real working data of every currently open station (use this often, especially Stations 2 &amp; 4).')+'</div>'+
     '</div>'
   );
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('mNew').addEventListener('click', function(){
-    var name = prompt(T('projectName'), lang==='vi'?'Dự án mới':'New project');
-    if(name===null) return;
-    project = newProject(name||'Project');
-    saveProject(project);
-    localStorage.setItem(LS_ACTIVE, project.id);
-    remountAll();
     closeModal();
+    openNewProjectModal();
   });
   document.getElementById('mBackupNow').addEventListener('click', function(){ downloadBackup(false); closeModal(); });
   document.getElementById('mRestoreFile').addEventListener('change', function(e){
@@ -901,39 +1000,18 @@ function openProjectsModal(){
     };
     r.readAsText(f);
   });
-  document.getElementById('mExport').addEventListener('click', function(){
-    var blob = new Blob([JSON.stringify(project,null,2)], {type:'application/json'});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'HubShell_'+project.name.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.json';
-    a.click();
-  });
-  document.getElementById('mImportFile').addEventListener('change', function(e){
-    var f = e.target.files[0]; if(!f) return;
-    var r = new FileReader();
-    r.onload = function(ev){
-      try{
-        var p = JSON.parse(ev.target.result);
-        if(!p.id || !p.bundles) throw new Error('invalid');
-        p.id = 'proj_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-        saveProject(p);
-        project = p;
-        localStorage.setItem(LS_ACTIVE, project.id);
-        remountAll();
-        closeModal();
-      }catch(err){ alert(lang==='vi'?'File dự án không hợp lệ':'Invalid project file'); }
-    };
-    r.readAsText(f);
-  });
   document.getElementById('modalBox').querySelectorAll('.modal-row[data-id]').forEach(function(row){
     row.addEventListener('click', function(e){
       if(e.target.closest('button')) return;
       var id = row.dataset.id;
-      if(id===project.id){ closeModal(); return; }
-      project = loadProject(id);
-      localStorage.setItem(LS_ACTIVE, project.id);
-      remountAll();
-      closeModal();
+      if(id===ns.db.currentProjectId){ closeModal(); return; }
+      Promise.resolve(ns.db.loadProject(id)).then(function(){
+        return Promise.resolve(ns.db.listProjects());
+      }).then(function(list2){
+        syncProjectFromStation1(id, list2);
+        closeModal();
+        remountAll();
+      });
     });
   });
   document.getElementById('modalBox').querySelectorAll('button[data-act]').forEach(function(btn){
@@ -941,25 +1019,31 @@ function openProjectsModal(){
       e.stopPropagation();
       var id = btn.dataset.id;
       if(btn.dataset.act==='rename'){
-        var p = id===project.id ? project : loadProject(id);
-        var name = prompt(T('projectName'), p.name);
+        var row = list.filter(function(r){return r.id===id;})[0];
+        var name = prompt(T('projectName'), row?row.name:'');
         if(name===null) return;
-        p.name = name||p.name;
-        saveProject(p);
-        if(id===project.id) renderNav();
-        openProjectsModal();
+        Promise.resolve(ns.db.renameProject(id, name)).then(function(){
+          if(id===ns.db.currentProjectId){ project.name=(name||'').trim()||project.name; saveProject(project); renderNav(); }
+          openProjectsModal();
+        });
       } else if(btn.dataset.act==='del'){
         if(!confirm(T('confirmDeleteProject'))) return;
-        localStorage.removeItem(LS_PROJECT(id));
-        var idx2 = loadIndex().filter(function(r){return r.id!==id;});
-        saveIndex(idx2);
-        if(id===project.id){
-          project = idx2.length ? loadProject(idx2[0].id) : newProject();
-          if(!idx2.length) saveProject(project);
-          localStorage.setItem(LS_ACTIVE, project.id);
-          remountAll();
-        }
-        openProjectsModal();
+        Promise.resolve(ns.db.deleteProject(id)).then(function(){
+          return Promise.resolve(ns.db.listProjects());
+        }).then(function(list2){
+          if(!ns.db.currentProjectId && list2.length){
+            list2 = list2.slice().sort(function(a,b){ return new Date(b.updatedAt)-new Date(a.updatedAt); });
+            return Promise.resolve(ns.db.loadProject(list2[0].id)).then(function(){ return list2; });
+          }
+          return list2;
+        }).then(function(list2){
+          var wasActive = (id===project.id);
+          syncProjectFromStation1(ns.db.currentProjectId, list2);
+          renderNav();
+          if(activeView==='overview') renderOverview();
+          if(wasActive) remountAll();
+          openProjectsModal();
+        });
       }
     });
   });
@@ -971,6 +1055,7 @@ function remountAll(){
   mounted = {};
   go('overview');
   renderBackupDot();
+  mountStation('refrigdesign'); // giữ Trạm 1 luôn sẵn sàng ngầm — nguồn sự thật của "dự án"
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1008,12 +1093,18 @@ if('serviceWorker' in navigator){
 /* ════════════════════════════════════════════════════════════════════
    10) KHỞI ĐỘNG
    ════════════════════════════════════════════════════════════════════ */
-ensureProject();
 document.documentElement.lang = lang;
 var startId = (location.hash||'').replace('#','');
 renderNav();
 renderBackupDot();
 if(startId && STATIONS[startId]){ go(startId); } else { go('overview'); }
+// Mount ngầm Trạm 1 (nguồn sự thật của "dự án") ngay từ đây — kể cả khi màn
+// hình khởi động là Tổng quan hoặc 1 trạm khác — rồi đồng bộ tên/ID dự án
+// thật vào sidebar + Tổng quan khi sẵn sàng, không chặn hiển thị ban đầu.
+ensureProjectFromStation1().then(function(){
+  renderNav();
+  if(activeView==='overview') renderOverview();
+});
 
 window.addEventListener('beforeunload', function(){ saveProject(project); });
 

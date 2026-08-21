@@ -863,8 +863,14 @@ NS.db = (function(){
     return storeName==='catalog' ? 'cat' : (storeName==='meta' ? 'key' : 'id');
   }
 
+  let _openPromise = null;
+  // ── Nhớ lại promise mở IndexedDB — Hub Shell (chạy ngoài, qua iframe) cũng
+  // gọi thẳng db.open() để biết chắc khi nào an toàn gọi listProjects/
+  // createProject..., không chỉ dựa vào namespace tồn tại (init() nội bộ
+  // cũng await open() y hệt, nên gọi lại ở đây không mở kết nối 2 lần). ──
   function open(){
-    return new Promise((resolve)=>{
+    if(_openPromise) return _openPromise;
+    _openPromise = new Promise((resolve)=>{
       if(typeof indexedDB === 'undefined'){
         useFallback = true;
         console.warn('IndexedDB không khả dụng — chuyển sang localStorage fallback.');
@@ -890,13 +896,19 @@ NS.db = (function(){
         resolve(null);
       };
     });
+    return _openPromise;
   }
 
   function tx(storeName, mode='readonly'){
     return idb.transaction(storeName, mode).objectStore(storeName);
   }
 
-  function put(storeName, value){
+  // ── put/get/getAll/del đều tự await open() trước — bảo vệ mọi lời gọi từ
+  // BÊN NGOÀI iframe (Hub Shell, hoặc test) có thể tới sớm hơn init() nội bộ
+  // của Trạm 1 (init() cũng await open(), nhưng open() đã tự nhớ promise nên
+  // gọi lại không mở kết nối 2 lần — chỉ đợi cùng 1 promise đó). ──
+  async function put(storeName, value){
+    await open();
     if(useFallback){
       return new Promise((resolve)=>{
         const store = lsReadStore(storeName);
@@ -912,7 +924,8 @@ NS.db = (function(){
       r.onerror=(e)=>{ if(NS.ui&&NS.ui.toast) NS.ui.toast('err','Lỗi lưu dữ liệu (IndexedDB)'); reject(e); };
     });
   }
-  function get(storeName, key){
+  async function get(storeName, key){
+    await open();
     if(useFallback){
       return new Promise((resolve)=>{
         const store = lsReadStore(storeName);
@@ -925,7 +938,8 @@ NS.db = (function(){
       r.onerror=(e)=>reject(e);
     });
   }
-  function getAll(storeName){
+  async function getAll(storeName){
+    await open();
     if(useFallback){
       return new Promise((resolve)=>{
         const store = lsReadStore(storeName);
@@ -938,7 +952,8 @@ NS.db = (function(){
       r.onerror=(e)=>reject(e);
     });
   }
-  function del(storeName, key){
+  async function del(storeName, key){
+    await open();
     if(useFallback){
       return new Promise((resolve)=>{
         const store = lsReadStore(storeName);
@@ -956,6 +971,14 @@ NS.db = (function(){
 
   // ── Projects CRUD ──
   let currentProjectId = null;
+
+  // ── Báo cho Hub Shell biết dự án đang mở vừa đổi — kể cả khi người dùng
+  // thao tác thẳng trong modal "Quản lý Dự án" riêng của Trạm 1 (không qua
+  // Tổng quan/Hub), Hub vẫn phải đồng bộ lại vì Trạm 1 là nguồn sự thật duy
+  // nhất cho "dự án" dùng chung giữa 4 trạm. ──
+  function _notifyHubProjectChanged(){
+    try{ window.dispatchEvent(new CustomEvent('HUB:projectChanged', {detail:{id:currentProjectId}})); }catch(e){}
+  }
 
   async function listProjects(){
     const list = await getAll('projects');
@@ -987,6 +1010,7 @@ NS.db = (function(){
     NS.calc.loadDefaultState();
     NS.ui.renderAll();
     NS.ui.toast('ok', `Đã tạo dự án "${name}"`);
+    _notifyHubProjectChanged();
   }
 
   async function saveCurrentProjectState(silent){
@@ -1024,6 +1048,7 @@ NS.db = (function(){
     NS.ui.hideModal('modalProjects');
     NS.ui.renderAll();
     NS.ui.toast('info', `Đã mở dự án "${proj.name}"`);
+    _notifyHubProjectChanged();
   }
 
   async function deleteProject(id){
@@ -1035,6 +1060,20 @@ NS.db = (function(){
     }
     await renderProjectList();
     NS.ui.toast('warn', 'Đã xóa dự án');
+    _notifyHubProjectChanged();
+  }
+
+  // ── Đổi tên dự án không qua modal riêng — cho phép Hub Shell gọi thẳng từ
+  // màn Quản lý dự án dùng chung, không cần mở modal đổi tên nội bộ của Trạm 1. ──
+  async function renameProject(id, name){
+    const proj = await get('projects', id);
+    if(!proj) return;
+    proj.name = (name||'').trim() || proj.name;
+    proj.updatedAt = new Date().toISOString();
+    await put('projects', proj);
+    if(currentProjectId===id) NS.ui.updateProjectBadge();
+    _notifyHubProjectChanged();
+    return proj;
   }
 
   function openRename(proj){
@@ -1059,6 +1098,7 @@ NS.db = (function(){
     NS.ui.hideModal('modalRenameProject');
     NS.ui.updateProjectBadge();
     await renderProjectList();
+    _notifyHubProjectChanged();
   }
 
   async function renderProjectList(){
@@ -1193,7 +1233,7 @@ NS.db = (function(){
 
   return {
     open, put, get, getAll, del,
-    listProjects, createProject, saveCurrentProjectState, loadProject, deleteProject,
+    listProjects, createProject, saveCurrentProjectState, loadProject, deleteProject, renameProject,
     buildFullBackup, restoreFullBackup,
     openRename, saveRename, renderProjectList, _openRenameById, _confirmDelete,
     saveCatalog, loadCatalog, exportAllJSON, importAllJSON,
@@ -4350,10 +4390,21 @@ NS.ui = (function(){
       const inner = ICON_MAP[name];
       if(!inner) return;
       const cls = elx.getAttribute('class')||'';
+      const px = _iconSizePx(cls);
       const wrap = document.createElement('span');
-      wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}">${inner}</svg>`;
+      wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}" width="${px}" height="${px}" style="width:${px}px;height:${px}px;flex-shrink:0">${inner}</svg>`;
       elx.replaceWith(wrap.firstElementChild);
     });
+  }
+  // ── Kích thước icon dựa vào class Tailwind (w-3, w-3.5, w-4...) — CSS build
+  // sẵn của trang KHÔNG có các class w-*/h-* này (bị purge vì chỉ xuất hiện
+  // trong chuỗi JS, không phải HTML tĩnh lúc build), nên SVG trước đây không
+  // có width/height nào cả và trình duyệt vẽ ở kích thước mặc định (~300px),
+  // phủ kín màn hình. Đặt width/height thẳng lên thẻ svg để không phụ thuộc
+  // CSS ngoài nữa. Thang đo giống Tailwind: 1 đơn vị = 4px (mặc định 16px). ──
+  function _iconSizePx(cls){
+    const m = cls.match(/\bw-(\d+(?:\.\d+)?)\b/) || cls.match(/\bh-(\d+(?:\.\d+)?)\b/);
+    return m ? Math.round(parseFloat(m[1]) * 4) : 16;
   }
 
   return {

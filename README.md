@@ -69,12 +69,15 @@ hình chính, chạy toàn màn hình như app gốc, dùng offline được sau
 
 ## Quản lý dự án
 
-Hub Shell hỗ trợ nhiều dự án ở cấp điều phối (nút ☰ trên thanh công cụ):
-tạo mới, đổi tên, xoá, xuất/nhập toàn bộ (`.json`, chứa mọi bundle đã bàn
-giao giữa các trạm cho dự án đó). Đây là lớp quản lý **riêng** với hệ thống
-đa dự án nội bộ của từng trạm (mỗi trạm vẫn có `IndexedDB`/danh sách dự án
-của chính nó) — Hub chỉ nhớ "đã gửi bundle nào cho trạm nào" để tự động điền
-lại nếu bạn quay lại sau.
+"Dự án" dùng chung cho cả 4 trạm, khai báo 1 lần — nguồn sự thật duy nhất là
+CSDL đa dự án thật của **Trạm 1** (RefrigDesignNH3, `IndexedDB`). Modal Dự án
+(nút ☰ trên thanh công cụ, hoặc nút "✦ Dự án mới" ở Tổng quan) đọc/ghi thẳng
+qua đó: tạo mới, mở, đổi tên, xoá — áp dụng ngay cho cả 4 trạm, không còn
+danh sách riêng ở cấp Hub nữa. Đổi tên/xoá/tạo trực tiếp trong modal "Quản
+lý Dự án" riêng của Trạm 1 (không qua Tổng quan) cũng tự đồng bộ ngược lại
+Hub. Hub chỉ giữ thêm 1 "sổ theo dõi bàn giao" riêng (không phải danh sách
+dự án) để nhớ đã gửi bundle nào cho trạm nào, phục vụ badge PASS/WARN/FAIL
+ở Tổng quan — xoá sổ này không ảnh hưởng dữ liệu tính toán thật.
 
 ## Sao lưu — quan trọng, đọc trước khi dùng cho dự án thật
 
