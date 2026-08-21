@@ -119,4 +119,53 @@ test.describe('Hub Shell — tổng quan & điều hướng', () => {
     });
     expect(modalStillOpen, 'Không được để modal Quản lý Dự án của Trạm 1 tự bật chặn màn hình sau khi đã tạo dự án').toBe(false);
   });
+
+  // Hồi quy: trước đây Hub tự tạo/lưu 1 danh sách dự án RIÊNG song song với
+  // CSDL thật của Trạm 1 — 1 dự án cùng tên nhưng 2 ID khác nhau ở 2 nơi.
+  // Giờ modal "Dự án" ở Tổng quan phải đọc/ghi THẲNG qua CSDL thật của Trạm
+  // 1: đúng 1 dòng (không trùng lặp), cùng 1 ID, và đổi tên qua modal phải
+  // phản ánh đúng vào tên thật bên trong Trạm 1 — kể cả khi đổi tên trực
+  // tiếp trong modal riêng của Trạm 1 (không qua Tổng quan), Hub vẫn phải
+  // đồng bộ lại (sự kiện HUB:projectChanged).
+  test('modal "Dự án" dùng chung 1 nguồn thật với Trạm 1 — không trùng lặp, đổi tên đồng bộ 2 chiều', async ({ page }) => {
+    await gotoHub(page);
+    await page.click('#btnNewProjectOverview');
+    await page.fill('#npInputName', 'Kho lạnh Hợp Nhất E2E');
+    await page.click('#npCreate');
+    await expect(page.locator('#crumb b')).toContainText('RefrigDesignNH3', { timeout: 15_000 });
+    const rdn3 = await getFrame(page, 'refrigdesign', 15_000);
+
+    const hubActiveId = await page.evaluate(() => localStorage.getItem('hubshell_active_project'));
+    const s1 = await rdn3.evaluate(async () => {
+      const list = await window.RefrigDesignNH3.db.listProjects();
+      return { count: list.length, id: list[0] && list[0].id };
+    });
+    expect(s1.count, 'Chỉ được có đúng 1 dự án thật trong Trạm 1 (vừa tạo)').toBe(1);
+    expect(hubActiveId, 'ID dự án đang mở ở Hub phải TRÙNG với ID thật trong Trạm 1 — không phải 2 bản ghi khác nhau').toBe(s1.id);
+
+    // Mở modal Dự án ở Tổng quan — phải thấy đúng 1 dòng, không trùng lặp.
+    await page.click('#btnProjects');
+    await expect(page.locator('.modal-row')).toHaveCount(1);
+
+    // Đổi tên qua modal Hub — phải ghi thẳng vào tên thật của Trạm 1.
+    page.once('dialog', (d) => d.accept('Kho lạnh Hợp Nhất E2E (đổi tên)'));
+    await page.click('.btn-icon-sm[data-act="rename"]');
+    await expect.poll(async () => {
+      return await rdn3.evaluate(async () => {
+        const list = await window.RefrigDesignNH3.db.listProjects();
+        return list[0] && list[0].name;
+      });
+    }, { timeout: 5_000 }).toBe('Kho lạnh Hợp Nhất E2E (đổi tên)');
+    await page.click('#mClose');
+
+    // Đổi tên trực tiếp TRONG Trạm 1 (không qua Tổng quan) — sidebar Hub vẫn
+    // phải tự đồng bộ theo (HUB:projectChanged).
+    await rdn3.evaluate(async () => {
+      await window.RefrigDesignNH3.db.renameProject(
+        window.RefrigDesignNH3.db.currentProjectId,
+        'Đổi tên trực tiếp trong Trạm 1'
+      );
+    });
+    await expect(page.locator('.brand-text span')).toHaveText('Đổi tên trực tiếp trong Trạm 1', { timeout: 5_000 });
+  });
 });

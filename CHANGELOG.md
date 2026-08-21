@@ -6,6 +6,48 @@ version riêng của mình (hiển thị ở footer/PDF của từng app) — **
 version Hub Shell dưới đây. Bảng snapshot cuối file ghi lại version từng trạm
 tại các mốc quan trọng để tham chiếu.
 
+## [1.3.0] — 2026-08-21
+
+### Changed — Hợp nhất "dự án" thành 1 nguồn duy nhất
+- Trước đây Hub Shell tự tạo/lưu 1 danh sách dự án RIÊNG (`hubshell_projects`),
+  song song và **độc lập** với CSDL đa dự án thật của Trạm 1 (IndexedDB) — 1
+  dự án "Abc" ở Hub và "Abc" bên trong Trạm 1 là 2 bản ghi khác ID nhau, có
+  thể lệch nhau (đổi tên/xoá 1 bên không ảnh hưởng bên kia). Giờ Trạm 1 là
+  **nguồn sự thật duy nhất**: modal "Dự án" ở Tổng quan đọc/ghi thẳng qua
+  `RefrigDesignNH3.db` (tạo/mở/đổi tên/xoá) — không còn danh sách riêng của
+  Hub. Trạm 1 tự phát sự kiện `HUB:projectChanged` mỗi khi dự án đang mở đổi
+  (kể cả khi thao tác trực tiếp trong modal "Quản lý Dự án" riêng của Trạm 1,
+  không qua Tổng quan) để Hub luôn đồng bộ đúng tên/ID.
+- Trạm 1 được mount ngầm (ẩn) ngay từ lúc Hub khởi động thay vì chỉ khi người
+  dùng mở trạm đó, để CSDL dự án của nó luôn sẵn sàng tra cứu.
+- Gỡ bỏ 2 nút "Xuất toàn bộ (.json)" / "Nhập dự án (.json)" trong modal Dự án
+  — trước đây chỉ xuất/nhập đúng cái sổ ledger riêng (redundant) của Hub, dễ
+  nhầm với "Sao lưu toàn bộ" (dữ liệu tính toán thật) vốn là cơ chế đúng cần
+  dùng.
+
+### Fixed
+- **Lỗi hiển thị**: icon SVG (mũi tên liên kết, kẹp giấy...) trong cả 4 file
+  trạm không có `width`/`height` nào cả (class Tailwind `w-3.5 h-3.5`... bị
+  purge khỏi CSS build vì chỉ xuất hiện trong chuỗi JS) — trình duyệt vẽ ở
+  kích thước mặc định (~300px), phủ gần kín màn hình, đặc biệt trên điện
+  thoại. Nay icon luôn có `width`/`height` gán thẳng lên thẻ `<svg>`, không
+  phụ thuộc CSS ngoài.
+- `iframe.loading="lazy"` khiến Trạm 1 mount ngầm (display:none) **không bao
+  giờ** tải xong — lazy-load gốc của trình duyệt dựa vào việc phần tử có gần
+  viewport hay không, mà phần tử ẩn thì không bao giờ được coi là gần
+  viewport. Gỡ thuộc tính này (Hub Shell đã tự quản lý việc mount theo nhu
+  cầu ở tầng JS).
+- `collectFullBackup()`/nút "Sao lưu ngay" không `await` `exportFullBackup()`
+  của Trạm 1/3 (hàm async, đọc IndexedDB) — file backup tải về **âm thầm
+  rỗng** cho đúng 2 trạm có dữ liệu quan trọng nhất. Trạm 2/4 (đồng bộ,
+  không qua IndexedDB) không bị ảnh hưởng nên lỗi lọt qua khi trước đây chỉ
+  test 2 trạm đó.
+- CSDL Trạm 1 (IndexedDB) có thể được gọi (từ Hub, hoặc script bên ngoài)
+  trước khi `init()` nội bộ của Trạm 1 mở kết nối xong — `db.open()` giờ tự
+  nhớ lại promise cũ (idempotent) và mọi hàm CRUD (`get/put/getAll/del`) tự
+  `await open()` trước, loại bỏ toàn bộ race "Cannot read properties of null
+  (reading 'transaction')".
+
 ## [1.2.0] — 2026-08-20
 
 ### Added

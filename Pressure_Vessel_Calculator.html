@@ -1340,6 +1340,16 @@ function setupVietnameseFont(doc){
    ============================================================================= */
 window.AppPV = (function(){
 
+  // ── Kích thước icon dựa vào class Tailwind (w-3, w-3.5, w-4...) — trang
+  // KHÔNG build CSS Tailwind nên các class w-*/h-* này không tồn tại; SVG
+  // trước đây không có width/height nào cả, trình duyệt vẽ ở kích thước mặc
+  // định (~300px), phủ kín màn hình. Đặt width/height thẳng lên thẻ svg.
+  // Thang đo giống Tailwind: 1 đơn vị = 4px (mặc định 16px). ──
+  function _iconSizePx(cls){
+    const m = cls.match(/\bw-(\d+(?:\.\d+)?)\b/) || cls.match(/\bh-(\d+(?:\.\d+)?)\b/);
+    return m ? Math.round(parseFloat(m[1]) * 4) : 16;
+  }
+
   const ICON_MAP = {
     "alert-triangle": "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /> <path d=\"M12 9v4\" /> <path d=\"M12 17h.01\" />",
     "bot": "<path d=\"M12 8V4H8\" /> <rect width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\" /> <path d=\"M2 14h2\" /> <path d=\"M20 14h2\" /> <path d=\"M15 13v2\" /> <path d=\"M9 13v2\" />",
@@ -2314,8 +2324,9 @@ window.AppPV = (function(){
         const inner = ICON_MAP[name];
         if(!inner) return;
         const cls = el.getAttribute('class')||'';
+        const px = _iconSizePx(cls);
         const wrap = document.createElement('span');
-        wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}">${inner}</svg>`;
+        wrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}" width="${px}" height="${px}" style="width:${px}px;height:${px}px;flex-shrink:0">${inner}</svg>`;
         el.replaceWith(wrap.firstElementChild);
       });
     },

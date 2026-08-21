@@ -116,6 +116,48 @@ Hub Shell gọi `exportFullBackup()` của **mọi trạm đang mở** (không c
 hiện hành) để gộp thành 1 file `.json` duy nhất (nút 💾 trên thanh công cụ),
 và gọi `importFullBackup(data)` cho từng trạm ngay khi trạm đó được mở lần
 đầu sau khi khôi phục từ file (không cần mở đủ cả 4 trạm cùng lúc).
+`exportFullBackup()`/`importFullBackup()` có thể **đồng bộ hoặc async** tuỳ
+app — Hub Shell luôn bọc lời gọi trong `Promise.resolve(...).then(...)`, kể
+cả với app đồng bộ, để không lặp lại lỗi từng có: gọi thẳng không `await` với
+1 app async khiến `JSON.stringify` một `Promise` chưa resolve ra `"{}"` (file
+backup rỗng âm thầm).
+
+## 4c. Nguồn sự thật của "dự án" — Trạm 1, và event `HUB:projectChanged`
+
+Khác với bundle bàn giao (Mục 4) hay backup dữ liệu làm việc (Mục 4b), **danh
+tính "dự án"** (tên + ID dùng chung cho cả 4 trạm) có đúng **1 nguồn sự thật
+duy nhất**: CSDL đa dự án thật của Trạm 1 (`window.RefrigDesignNH3.db`,
+IndexedDB). Hub Shell **không** tự tạo/lưu 1 danh sách dự án riêng song song
+nữa (từng có ở bản trước — gây trùng lặp ID giữa Hub và Trạm 1 cho "cùng 1"
+dự án). Thay vào đó:
+
+```js
+window.RefrigDesignNH3.db.listProjects()        // -> Promise<Array<{id,name,updatedAt,...}>>
+window.RefrigDesignNH3.db.createProject(name)    // tạo + set làm dự án đang mở
+window.RefrigDesignNH3.db.loadProject(id)        // mở 1 dự án có sẵn làm dự án đang mở
+window.RefrigDesignNH3.db.renameProject(id,name) // đổi tên, không cần mở modal riêng
+window.RefrigDesignNH3.db.deleteProject(id)
+window.RefrigDesignNH3.db.currentProjectId       // getter/setter — ID dự án đang mở
+window.RefrigDesignNH3.db.open()                 // idempotent — tự nhớ lại promise cũ,
+                                                  // an toàn gọi lại từ bên ngoài iframe
+                                                  // để chắc IndexedDB đã mở xong trước
+                                                  // khi gọi các hàm ở trên.
+```
+
+Mỗi khi dự án đang mở đổi (tạo/mở/đổi tên/xoá) — **kể cả khi thao tác trực
+tiếp trong modal "Quản lý Dự án" riêng của Trạm 1**, không qua Tổng quan của
+Hub — Trạm 1 tự phát:
+
+```js
+window.dispatchEvent(new CustomEvent('HUB:projectChanged', { detail: { id: currentProjectId } }));
+```
+
+Hub Shell lắng nghe event này trên `iframe.contentWindow` của Trạm 1 (chỉ
+Trạm 1 — 3 trạm còn lại không có khái niệm đa dự án riêng, chúng chỉ giữ 1
+phiên làm việc autosave/handoff) để đồng bộ lại tên/ID hiển thị ở sidebar +
+Tổng quan. Vì lý do này, Trạm 1 luôn được **mount ngầm (ẩn)** ngay từ lúc Hub
+Shell khởi động — xem `mountStation()`/`waitStation1Ready()` — không đợi tới
+khi người dùng bấm mở trạm đó.
 
 ## 5. Cấu trúc `bundle` (rút gọn, xem code từng hàm export để biết đầy đủ field)
 

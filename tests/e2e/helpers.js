@@ -12,8 +12,20 @@ const STATIONS = {
   boq:            { file: 'BOQ_Cost_Estimate_Calculator.html', ns: 'AppBOQ' },
 };
 
+/**
+ * Mở Hub Shell rồi đợi đồng bộ dự án ban đầu với Trạm 1 xong (mục "2) STATE
+ * + PERSISTENCE" trong Hub_Shell.html — Trạm 1 là nguồn sự thật duy nhất cho
+ * "dự án"). Ngay sau khi trang load, sidebar hiện tạm "Đang tải…"/"Loading…"
+ * rồi tự render lại 1 lần nữa khi đồng bộ xong (đổi tên dự án thật, có thể
+ * cập nhật badge Tổng quan) — không đợi ở đây thì test có thể đọc DOM đúng
+ * lúc đang render lại lần 2, gây race hiếm gặp (VD .card tạm thời detach).
+ */
 async function gotoHub(page) {
   await page.goto('/Hub_Shell.html', { waitUntil: 'load' });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.brand-text span');
+    return el && el.textContent !== 'Đang tải…' && el.textContent !== 'Loading…';
+  }, { timeout: 20_000 }).catch(() => {});
 }
 
 /** Mở 1 trạm qua sidebar/bottom-nav của Hub Shell (không mở file trực tiếp). */
