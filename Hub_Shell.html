@@ -123,6 +123,13 @@
   .progress-bar{height:8px; border-radius:999px; background:var(--panel); overflow:hidden; display:flex; border:1px solid var(--border)}
   .progress-bar i{display:block; height:100%}
   .progress-label{font-size:10.5px; color:var(--t3); margin-top:6px; display:flex; justify-content:space-between}
+  .new-project-btn{
+    display:flex; align-items:center; gap:7px; padding:9px 15px; border-radius:999px; cursor:pointer; white-space:nowrap;
+    background:var(--cyan-dim); border:1px solid var(--cyan-b); color:var(--cyan); font-size:12px; font-weight:700;
+    transition:.15s;
+  }
+  .new-project-btn:hover{filter:brightness(1.15)}
+  .new-project-btn:active{transform:scale(.97)}
 
   .pipeline{display:flex; align-items:center; gap:0; margin-bottom:26px; overflow-x:auto; padding-bottom:6px}
   .pipe-node{display:flex; flex-direction:column; align-items:center; gap:8px; flex:0 0 auto; width:120px; text-align:center}
@@ -461,12 +468,15 @@ function renderOverview(){
   var html = '';
   html += '<div class="ov-head">';
   html += '<div><div class="ov-title">'+T('overview')+'</div><div class="ov-sub">'+T('overviewSub')+'</div></div>';
+  html += '<div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap">';
   html += '<div class="progress-wrap"><div class="progress-bar">'+
     STATION_ORDER.map(function(id){
       var s=STATIONS[id]; var active = stationOverallStatus(id).hasOutgoing || edgeKeysTo(id).some(function(k){return project.confirmed[k];});
       return '<i style="flex:1;background:'+(active?('var(--'+s.accent+')'):'transparent')+';opacity:'+(active?1:0.15)+'"></i>';
     }).join('')+
     '</div><div class="progress-label"><span>'+pct+'%</span><span>'+doneCount+'/'+STATION_ORDER.length+'</span></div></div>';
+  html += '<button class="new-project-btn" id="btnNewProjectOverview">✦ '+T('newProject').replace(/^\+\s*/,'')+'</button>';
+  html += '</div>';
   html += '</div>';
 
   // pipeline visual
@@ -510,6 +520,54 @@ function renderOverview(){
 
   el.innerHTML = html;
   el.querySelectorAll('.card').forEach(function(c){ c.addEventListener('click', function(){ go(c.dataset.id); }); });
+  var npBtn = document.getElementById('btnNewProjectOverview');
+  if(npBtn) npBtn.addEventListener('click', openNewProjectModal);
+}
+
+// ── Tạo dự án mới ngay từ Tổng quan — trước đây phải mở Trạm 1 và tự bấm
+// qua modal "Quản lý Dự án" riêng của trạm đó mới bắt đầu được. Giờ tạo 1
+// lần ở đây: vừa tạo dự án Hub (theo dõi bàn giao), vừa tự tạo luôn dự án
+// cùng tên bên trong Trạm 1 (nơi thực sự chứa dữ liệu tính toán), rồi mở
+// thẳng Trạm 1 ra để bắt đầu nhập liệu. ──
+function openNewProjectModal(){
+  openModal(
+    '<div class="modal-head"><b>'+T('newProject').replace(/^\+\s*/,'')+'</b><button class="icon-btn" id="npClose">✕</button></div>'+
+    '<div class="modal-body">'+
+      '<div class="field"><label>'+T('projectName')+'</label><input type="text" id="npInputName" class="field-input" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--t1);font-size:12.5px" placeholder="'+(lang==='vi'?'VD: Kho lạnh ABC':'e.g. ABC Cold Storage')+'"></div>'+
+      '<div class="modal-row-sub" style="padding:0 2px">'+(lang==='vi'?'Sẽ tạo dự án này ở Hub và tự động mở sẵn ở Trạm 1 (RefrigDesignNH3) để bạn bắt đầu nhập liệu ngay.':'Creates this project in the Hub and automatically opens it in Station 1 (RefrigDesignNH3) so you can start entering data right away.')+'</div>'+
+      '<div class="btn-row"><button class="btn primary" id="npCreate">'+T('newProject').replace(/^\+\s*/,'')+'</button></div>'+
+    '</div>'
+  );
+  document.getElementById('npClose').addEventListener('click', closeModal);
+  var input = document.getElementById('npInputName');
+  input.focus();
+  function submit(){
+    var name = (input.value||'').trim() || (lang==='vi'?'Dự án mới':'New project');
+    closeModal();
+    createProjectAndOpenStation1(name);
+  }
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter') submit(); });
+  document.getElementById('npCreate').addEventListener('click', submit);
+}
+
+function createProjectAndOpenStation1(name){
+  project = newProject(name);
+  saveProject(project);
+  localStorage.setItem(LS_ACTIVE, project.id);
+  remountAll();
+  go('refrigdesign');
+  var check = setInterval(function(){
+    var rec = mounted['refrigdesign'];
+    if(rec && rec.ready){
+      clearInterval(check);
+      var win; try{ win = rec.iframe.contentWindow; }catch(e){ return; }
+      var ns = win && win.RefrigDesignNH3;
+      if(ns && ns.db && ns.db.createProject){
+        try{ ns.db.createProject(name); }catch(e){ console.error('[HubShell] createProject lỗi', e); }
+      }
+    }
+  }, 120);
+  setTimeout(function(){ clearInterval(check); }, 15000);
 }
 
 /* ════════════════════════════════════════════════════════════════════

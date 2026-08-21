@@ -963,8 +963,10 @@ NS.db = (function(){
     return list;
   }
 
-  async function createProject(){
-    const name = document.getElementById('npName').value.trim() || 'Dự án mới';
+  // nameOverride: cho phép tạo dự án không qua modal (VD Hub Shell gọi thẳng
+  // từ màn Tổng quan) — khi có, bỏ qua đọc input #npName trong modal.
+  async function createProject(nameOverride){
+    const name = (nameOverride && nameOverride.trim()) || document.getElementById('npName').value.trim() || 'Dự án mới';
     const client = document.getElementById('npClient').value.trim();
     const address = document.getElementById('npAddress').value.trim();
     const engineer = document.getElementById('npEngineer').value.trim();

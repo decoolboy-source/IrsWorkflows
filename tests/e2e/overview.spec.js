@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { gotoHub, openAndWaitStation, STATIONS } = require('./helpers');
+const { gotoHub, openAndWaitStation, getFrame, STATIONS } = require('./helpers');
 
 test.describe('Hub Shell — tổng quan & điều hướng', () => {
   test('tải trang không lỗi console/page, hiện đủ 4 thẻ trạm', async ({ page }) => {
@@ -82,5 +82,41 @@ test.describe('Hub Shell — tổng quan & điều hướng', () => {
     await page.waitForTimeout(200);
     const scrollTop = await page.evaluate(() => document.getElementById('view-overview').scrollTop);
     expect(scrollTop, 'Lăn chuột phải cuộn được #view-overview — không bị #frames chặn').toBeGreaterThan(0);
+  });
+
+  // Trước đây phải mở Trạm 1, tự bấm qua modal "Quản lý Dự án" riêng của
+  // trạm đó mới bắt đầu được — giờ tạo 1 lần từ Tổng quan, tự động mở sẵn
+  // dự án cùng tên bên trong Trạm 1 (nơi thực sự chứa dữ liệu tính toán).
+  test('nút "Tạo dự án mới" ở Tổng quan tự tạo dự án thật bên trong Trạm 1', async ({ page }) => {
+    await gotoHub(page);
+    await page.click('#btnNewProjectOverview');
+    await page.fill('#npInputName', 'Kho lạnh Test E2E');
+    await page.click('#npCreate');
+
+    // Phải tự chuyển sang Trạm 1 — không bắt người dùng tự bấm mở
+    await expect(page.locator('#crumb b')).toContainText('RefrigDesignNH3', { timeout: 15_000 });
+
+    const rdn3 = await getFrame(page, 'refrigdesign', 15_000);
+    await expect.poll(async () => {
+      return await rdn3.evaluate(async () => {
+        const projects = await window.RefrigDesignNH3.db.listProjects();
+        return projects.length;
+      });
+    }, { timeout: 10_000 }).toBeGreaterThan(0);
+
+    const state = await rdn3.evaluate(async () => {
+      const projects = await window.RefrigDesignNH3.db.listProjects();
+      return { name: projects[0].name, activeId: window.RefrigDesignNH3.state.activeProjectId };
+    });
+    expect(state.name).toBe('Kho lạnh Test E2E');
+    expect(state.activeId).toBeTruthy();
+
+    // Modal "Quản lý Dự án" của Trạm 1 không được tự bật lên chặn màn hình —
+    // đã có dự án active nên không cần hỏi lại người dùng.
+    const modalStillOpen = await rdn3.evaluate(() => {
+      const m = document.getElementById('modalProjects');
+      return !!(m && m.classList.contains('show'));
+    });
+    expect(modalStillOpen, 'Không được để modal Quản lý Dự án của Trạm 1 tự bật chặn màn hình sau khi đã tạo dự án').toBe(false);
   });
 });
