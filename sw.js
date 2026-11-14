@@ -1,7 +1,9 @@
 // Service worker cho Hub Shell — cache-first để 4 trạm (file nặng, vài MB/trạm)
 // chạy offline được sau lần mở đầu tiên. Bump CACHE_VERSION mỗi khi cập nhật
 // nội dung bất kỳ file nào trong CORE_ASSETS để buộc trình duyệt tải bản mới.
-const CACHE_VERSION = 'hubshell-v4';
+// Cache Storage dùng chung cả origin decoolboy-source.github.io: chỉ xóa cache của chính app này.
+const CACHE_PREFIX = 'hubshell-';
+const CACHE_VERSION = CACHE_PREFIX + 'v4';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -27,7 +29,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE_VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
