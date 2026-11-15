@@ -62,9 +62,13 @@ test.describe('Backup Center — autosave & sao lưu/khôi phục', () => {
     const fs = require('fs');
     const backup = JSON.parse(fs.readFileSync(path, 'utf8'));
 
-    expect(backup.format).toBe('hubshell-full-backup');
-    expect(backup.stations.nh3vessel).toBeTruthy();
-    expect(backup.stations.nh3vessel.state.vessels.length).toBeGreaterThan(0);
+    // Chuẩn chung Xuất/Nhập (data-io): { app, schemaVersion, exportedAt, projectCount, data: snapshot Hub }
+    expect(download.suggestedFilename()).toMatch(/^IrsWorkflows_\d{8}\.json$/);
+    expect(backup.app).toBe('IrsWorkflows');
+    expect(backup.schemaVersion).toBe(1);
+    expect(backup.data.format).toBe('hubshell-full-backup');
+    expect(backup.data.stations.nh3vessel).toBeTruthy();
+    expect(backup.data.stations.nh3vessel.state.vessels.length).toBeGreaterThan(0);
   });
 
   test('Khôi phục từ file sao lưu: tạo dữ án mới rồi phục hồi đúng dữ liệu vào Trạm 2', async ({ page }) => {
@@ -88,7 +92,15 @@ test.describe('Backup Center — autosave & sao lưu/khôi phục', () => {
     await expect(page.locator('#crumb b')).toContainText('RefrigDesignNH3', { timeout: 15_000 });
 
     await page.click('#btnProjects');
-    await page.setInputFiles('#mRestoreFile', backupPath);
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.click('#mRestoreFile'),
+    ]);
+    await chooser.setFiles(backupPath);
+    // Hộp thoại nhập: chọn Thay thế → xác nhận Thay thế → Đóng
+    await page.locator('.dataio-box button', { hasText: 'Thay thế' }).click();
+    await page.locator('.dataio-box button', { hasText: 'Thay thế' }).click();
+    await page.locator('.dataio-box button', { hasText: 'Đóng' }).click();
     await page.waitForTimeout(600);
 
     const nh3Restored = await openAndWaitStation(page, 'nh3vessel');

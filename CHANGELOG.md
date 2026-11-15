@@ -20,6 +20,15 @@ tại các mốc quan trọng để tham chiếu.
   Lần đầu mở, trạm tự chép toàn bộ bảng và bản ghi từ CSDL cũ sang. CSDL cũ được giữ nguyên.
 - Test e2e đọc khóa localStorage mới.
 
+### Changed — Sao lưu/Khôi phục toàn bộ theo chuẩn Xuất/Nhập chung
+- Nút "Sao lưu ngay" tải file `IrsWorkflows_YYYYMMDD.json` = `{ app, schemaVersion: 1, exportedAt, projectCount, data }`,
+  trong đó `data` là bản sao lưu Hub như cũ (`format: 'hubshell-full-backup'`). Vẫn nhận file `HubShell_FullBackup_*.json` cũ.
+- "Khôi phục từ file sao lưu": kiểm tra file trước khi ghi, báo số dự án Trạm 1/Trạm 3, hỏi **Gộp** hay **Thay thế**, xác nhận.
+  File sai định dạng báo lỗi tiếng Việt, không ghi gì.
+- Trạm 1 (`restoreFullBackup`) và Trạm 3 (`importAllJSON`) nhận thêm tham số `mode`: gộp = ghi đè theo mã dự án, giữ dự án
+  khác; thay thế = xóa dự án không có trong file. Trạm 2/4 chỉ có một bộ số liệu đang mở nên luôn lấy theo file.
+- Test e2e sao lưu/khôi phục cập nhật theo luồng mới.
+
 ## [1.3.0] — 2026-08-21
 
 ### Changed — Hợp nhất "dự án" thành 1 nguồn duy nhất

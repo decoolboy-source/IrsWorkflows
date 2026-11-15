@@ -1268,7 +1268,8 @@ NS.db = (function(){
     return backup;
   }
 
-  async function restoreFullBackup(data){
+  // mode: 'replace' xóa toàn bộ dự án hiện có trước khi ghi; 'merge' (mặc định) ghi đè theo mã dự án.
+  async function restoreFullBackup(data, mode){
     if(data.catalog){
       for(const cat of Object.keys(data.catalog)){
         NS.calc.DB[cat] = data.catalog[cat];
@@ -1276,6 +1277,10 @@ NS.db = (function(){
       }
     }
     if(data.projects){
+      if(mode === 'replace'){
+        const keep = {}; data.projects.forEach(p => { keep[p.id] = true; });
+        for(const p of await listProjects()) if(!keep[p.id]) await del('projects', p.id);
+      }
       for(const p of data.projects) await put('projects', p);
     }
     await renderProjectList();
@@ -5356,8 +5361,8 @@ if(document.readyState === 'complete' || document.readyState === 'interactive'){
   // vào IndexedDB (khác importProjectData ở trên, vốn dành cho dữ liệu bàn giao
   // từ trạm khác và luôn qua bước xem trước/xác nhận) ──
   NS.exportFullBackup = async function(){ return await NS.db.buildFullBackup(); };
-  NS.importFullBackup = async function(data){
-    await NS.db.restoreFullBackup(data);
+  NS.importFullBackup = async function(data, mode){
+    await NS.db.restoreFullBackup(data, mode);
     if(NS.ui) NS.ui.toast('ok', 'Đã khôi phục dữ liệu từ bản sao lưu');
   };
 })();

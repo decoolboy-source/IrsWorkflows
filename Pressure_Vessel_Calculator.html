@@ -2703,15 +2703,22 @@ window.AppPV = (function(){
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='apppv_backup.json'; a.click();
       return payload;
     },
-    async importAllJSON(payload){
+    // mode 'merge': giữ dự án hiện có, dự án trùng mã được thay bằng bản trong file. Mặc định: thay thế.
+    async importAllJSON(payload, mode){
       if(payload.db){
         state.db = payload.db;
         await idbClearAllAndSeed(state.db);
       }
       if(payload.projects){
-        await idbClear('projects');
-        for(const p of payload.projects) await idbPut('projects', p);
-        state.projects = payload.projects;
+        if(mode === 'merge'){
+          const byId = {}; (state.projects || []).forEach(p => { byId[p.id] = p; });
+          for(const p of payload.projects){ await idbPut('projects', p); byId[p.id] = p; }
+          state.projects = Object.keys(byId).map(k => byId[k]);
+        } else {
+          await idbClear('projects');
+          for(const p of payload.projects) await idbPut('projects', p);
+          state.projects = payload.projects;
+        }
       }
       if(payload.settings){ state.settings = payload.settings; localStorage.setItem(APP_PREFIX+'settings', JSON.stringify(state.settings)); }
       admin.renderAll(); calc.populateSelects(); calc.runFullCalculation();
@@ -4908,7 +4915,7 @@ window.AppPV = (function(){
   // bình/dự án ĐÃ LƯU — input đang gõ dở ở tab Tính toán mà chưa bấm "Lưu vào dự
   // án" KHÔNG nằm trong bản sao lưu này (nằm ngoài phạm vi bản vá autosave hiện tại).
   NS.exportFullBackup = function(){ return NS.admin.buildFullBackupPayload(); };
-  NS.importFullBackup = async function(data){ return await NS.admin.importAllJSON(data); };
+  NS.importFullBackup = async function(data, mode){ return await NS.admin.importAllJSON(data, mode); };
 })();
 </script>
 </body>
