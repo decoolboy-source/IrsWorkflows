@@ -1333,6 +1333,67 @@ function setupVietnameseFont(doc){
 </script>
 
 <script>
+/* [IrsWorkflows] localStorage dùng chung origin với các PWA khác: mọi khóa của app này có tiền tố "IrsWorkflows:".
+   Lần đầu mở bản mới: chép dữ liệu từ khóa cũ sang khóa mới (nếu khóa mới chưa có). Giữ nguyên khóa cũ. */
+(function(){try{var P="IrsWorkflows:",E=[],F=["hubshell_", "refrigdesign_nh3_", "nh3vessel_", "apppv_", "boq_"],i,k,K=[];
+for(i=0;i<localStorage.length;i++){k=localStorage.key(i);if(k&&k.indexOf(P)!==0)K.push(k);}
+K.forEach(function(k){var hit=E.indexOf(k)>=0||F.some(function(f){return k.indexOf(f)===0;});
+if(hit&&localStorage.getItem(P+k)===null)localStorage.setItem(P+k,localStorage.getItem(k));});
+}catch(e){}})();
+/* Chép CSDL IndexedDB tên cũ sang tên mới có tiền tố (một lần, giữ nguyên CSDL cũ).
+   Bỏ qua nếu CSDL mới đã có hoặc CSDL cũ không tồn tại. Không bao giờ báo lỗi ra ngoài. */
+window.__idbMigrateOnce = window.__idbMigrateOnce || function(oldName, newName){
+  var memo = window.__idbMigrateMemo = window.__idbMigrateMemo || {};
+  if (memo[newName]) return memo[newName];
+  return memo[newName] = new Promise(function(done){
+    if (typeof indexedDB === 'undefined' || oldName === newName) return done();
+    function exists(name, cb){
+      var r; try { r = indexedDB.open(name); } catch (e) { return cb(false); }
+      r.onupgradeneeded = function(e){ e.target.transaction.abort(); }; // chưa có: hủy để không tạo CSDL rỗng
+      r.onsuccess = function(){ r.result.close(); cb(true); };
+      r.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); cb(false); };
+    }
+    exists(newName, function(hasNew){ if (hasNew) return done();
+      exists(oldName, function(hasOld){ if (!hasOld) return done();
+        var ro = indexedDB.open(oldName);
+        ro.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); done(); };
+        ro.onsuccess = function(){
+          var src = ro.result, names = [].slice.call(src.objectStoreNames), schema = [], data = {};
+          if (!names.length) { src.close(); return done(); }
+          var tx = src.transaction(names, 'readonly');
+          names.forEach(function(n){
+            var s = tx.objectStore(n), vals = null, keys = null;
+            schema.push({ name: n, keyPath: s.keyPath, autoIncrement: s.autoIncrement,
+              indexes: [].slice.call(s.indexNames).map(function(i){ var x = s.index(i);
+                return { name: i, keyPath: x.keyPath, unique: x.unique, multiEntry: x.multiEntry }; }) });
+            s.getAll().onsuccess = function(e){ vals = e.target.result; if (keys) data[n] = { v: vals, k: keys }; };
+            s.getAllKeys().onsuccess = function(e){ keys = e.target.result; if (vals) data[n] = { v: vals, k: keys }; };
+          });
+          tx.onerror = function(){ src.close(); done(); };
+          tx.oncomplete = function(){
+            var ver = src.version; src.close();
+            var rn = indexedDB.open(newName, ver);
+            rn.onupgradeneeded = function(e){
+              var db = e.target.result, t = e.target.transaction;
+              schema.forEach(function(sc){
+                var o = {}; if (sc.keyPath !== null) o.keyPath = sc.keyPath; if (sc.autoIncrement) o.autoIncrement = true;
+                var st = db.createObjectStore(sc.name, o);
+                sc.indexes.forEach(function(i){ st.createIndex(i.name, i.keyPath, { unique: i.unique, multiEntry: i.multiEntry }); });
+              });
+              schema.forEach(function(sc){
+                var st = t.objectStore(sc.name), d = data[sc.name]; if (!d) return;
+                d.v.forEach(function(v, i){ if (sc.keyPath === null) st.put(v, d.k[i]); else st.put(v); });
+              });
+            };
+            rn.onsuccess = function(){ rn.result.close(); done(); };
+            rn.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); done(); };
+          };
+        };
+      });
+    });
+  });
+};
+
 /* =============================================================================
    AppPV — Pressure Vessel Engineering Suite v2606.05.01
    Created by QuocDe. Toàn bộ biến/hàm nằm trong namespace window.AppPV
@@ -1392,8 +1453,9 @@ window.AppPV = (function(){
     "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\" />",
   };
 
-  const APP_PREFIX = 'apppv_';                 // tiền tố khoá localStorage riêng app
+  const APP_PREFIX = 'IrsWorkflows:apppv_';                 // tiền tố khoá localStorage riêng app
   const IDB_NAME    = APP_PREFIX + 'idb_v1';
+  const LEGACY_IDB_NAME = 'apppv_idb_v1';
   const IDB_VERSION = 2;
   const LS_LANG     = APP_PREFIX + 'lang';
   const LS_UNITS    = APP_PREFIX + 'units';
@@ -1513,7 +1575,7 @@ window.AppPV = (function(){
     }, 400);
   }
   function idbOpen(){
-    return new Promise((resolve,reject)=>{
+    return window.__idbMigrateOnce(LEGACY_IDB_NAME, IDB_NAME).then(()=> new Promise((resolve,reject)=>{
       if(!('indexedDB' in window)){ reject(new Error('IndexedDB not supported in this environment')); return; }
       let req;
       try{ req = indexedDB.open(IDB_NAME, IDB_VERSION); }catch(e){ reject(e); return; }
@@ -1530,7 +1592,7 @@ window.AppPV = (function(){
       req.onsuccess = ()=>{ _idb = req.result; resolve(_idb); };
       req.onerror = ()=> reject(req.error || new Error('IndexedDB open failed'));
       req.onblocked = ()=> reject(new Error('IndexedDB open blocked'));
-    });
+    }));
   }
   function idbTx(storeName, mode){ return _idb.transaction(storeName, mode).objectStore(storeName); }
   function idbGetAll(storeName){

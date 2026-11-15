@@ -2,8 +2,10 @@
 // chạy offline được sau lần mở đầu tiên. Bump CACHE_VERSION mỗi khi cập nhật
 // nội dung bất kỳ file nào trong CORE_ASSETS để buộc trình duyệt tải bản mới.
 // Cache Storage dùng chung cả origin decoolboy-source.github.io: chỉ xóa cache của chính app này.
-const CACHE_PREFIX = 'hubshell-';
-const CACHE_VERSION = CACHE_PREFIX + 'v4';
+const CACHE_PREFIX = 'IrsWorkflows-';
+// Tiền tố cũ của chính app này (trước khi đổi sang tên repo): vẫn dọn để không để lại cache rác.
+const LEGACY_CACHE_PREFIX = 'hubshell-';
+const CACHE_VERSION = CACHE_PREFIX + 'v5';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -29,7 +31,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE_VERSION).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => (k.startsWith(CACHE_PREFIX) || k.startsWith(LEGACY_CACHE_PREFIX)) && k !== CACHE_VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });

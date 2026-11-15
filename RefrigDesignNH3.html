@@ -782,6 +782,67 @@ function setupVietnameseFont(doc){
 </div>
 
 <script>
+/* [IrsWorkflows] localStorage dùng chung origin với các PWA khác: mọi khóa của app này có tiền tố "IrsWorkflows:".
+   Lần đầu mở bản mới: chép dữ liệu từ khóa cũ sang khóa mới (nếu khóa mới chưa có). Giữ nguyên khóa cũ. */
+(function(){try{var P="IrsWorkflows:",E=[],F=["hubshell_", "refrigdesign_nh3_", "nh3vessel_", "apppv_", "boq_"],i,k,K=[];
+for(i=0;i<localStorage.length;i++){k=localStorage.key(i);if(k&&k.indexOf(P)!==0)K.push(k);}
+K.forEach(function(k){var hit=E.indexOf(k)>=0||F.some(function(f){return k.indexOf(f)===0;});
+if(hit&&localStorage.getItem(P+k)===null)localStorage.setItem(P+k,localStorage.getItem(k));});
+}catch(e){}})();
+/* Chép CSDL IndexedDB tên cũ sang tên mới có tiền tố (một lần, giữ nguyên CSDL cũ).
+   Bỏ qua nếu CSDL mới đã có hoặc CSDL cũ không tồn tại. Không bao giờ báo lỗi ra ngoài. */
+window.__idbMigrateOnce = window.__idbMigrateOnce || function(oldName, newName){
+  var memo = window.__idbMigrateMemo = window.__idbMigrateMemo || {};
+  if (memo[newName]) return memo[newName];
+  return memo[newName] = new Promise(function(done){
+    if (typeof indexedDB === 'undefined' || oldName === newName) return done();
+    function exists(name, cb){
+      var r; try { r = indexedDB.open(name); } catch (e) { return cb(false); }
+      r.onupgradeneeded = function(e){ e.target.transaction.abort(); }; // chưa có: hủy để không tạo CSDL rỗng
+      r.onsuccess = function(){ r.result.close(); cb(true); };
+      r.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); cb(false); };
+    }
+    exists(newName, function(hasNew){ if (hasNew) return done();
+      exists(oldName, function(hasOld){ if (!hasOld) return done();
+        var ro = indexedDB.open(oldName);
+        ro.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); done(); };
+        ro.onsuccess = function(){
+          var src = ro.result, names = [].slice.call(src.objectStoreNames), schema = [], data = {};
+          if (!names.length) { src.close(); return done(); }
+          var tx = src.transaction(names, 'readonly');
+          names.forEach(function(n){
+            var s = tx.objectStore(n), vals = null, keys = null;
+            schema.push({ name: n, keyPath: s.keyPath, autoIncrement: s.autoIncrement,
+              indexes: [].slice.call(s.indexNames).map(function(i){ var x = s.index(i);
+                return { name: i, keyPath: x.keyPath, unique: x.unique, multiEntry: x.multiEntry }; }) });
+            s.getAll().onsuccess = function(e){ vals = e.target.result; if (keys) data[n] = { v: vals, k: keys }; };
+            s.getAllKeys().onsuccess = function(e){ keys = e.target.result; if (vals) data[n] = { v: vals, k: keys }; };
+          });
+          tx.onerror = function(){ src.close(); done(); };
+          tx.oncomplete = function(){
+            var ver = src.version; src.close();
+            var rn = indexedDB.open(newName, ver);
+            rn.onupgradeneeded = function(e){
+              var db = e.target.result, t = e.target.transaction;
+              schema.forEach(function(sc){
+                var o = {}; if (sc.keyPath !== null) o.keyPath = sc.keyPath; if (sc.autoIncrement) o.autoIncrement = true;
+                var st = db.createObjectStore(sc.name, o);
+                sc.indexes.forEach(function(i){ st.createIndex(i.name, i.keyPath, { unique: i.unique, multiEntry: i.multiEntry }); });
+              });
+              schema.forEach(function(sc){
+                var st = t.objectStore(sc.name), d = data[sc.name]; if (!d) return;
+                d.v.forEach(function(v, i){ if (sc.keyPath === null) st.put(v, d.k[i]); else st.put(v); });
+              });
+            };
+            rn.onsuccess = function(){ rn.result.close(); done(); };
+            rn.onerror = function(ev){ if (ev && ev.preventDefault) ev.preventDefault(); done(); };
+          };
+        };
+      });
+    });
+  });
+};
+
 const ICON_MAP = {
     "alert-triangle": "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /> <path d=\"M12 9v4\" /> <path d=\"M12 17h.01\" />",
     "bot": "<path d=\"M12 8V4H8\" /> <rect width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\" /> <path d=\"M2 14h2\" /> <path d=\"M20 14h2\" /> <path d=\"M15 13v2\" /> <path d=\"M9 13v2\" />",
@@ -839,9 +900,10 @@ window.RefrigDesignNH3 = window.RefrigDesignNH3 || {};
 'use strict';
 
 // Khóa lưu trữ riêng cho app này (tránh đè dữ liệu app khác trong Hub Shell)
-const DB_NAME    = 'refrigdesign_nh3_db';
+const DB_NAME    = 'IrsWorkflows:refrigdesign_nh3_db';
+const LEGACY_DB_NAME = 'refrigdesign_nh3_db';
 const DB_VERSION = 1;
-const LS_PREFIX  = 'refrigdesign_nh3_';
+const LS_PREFIX  = 'IrsWorkflows:refrigdesign_nh3_';
 
 // ─────────────────────────────────────────────────────────────────────────
 //  MODULE: db — IndexedDB wrapper (persistence vĩnh viễn qua các lần mở lại)
@@ -870,7 +932,7 @@ NS.db = (function(){
   // cũng await open() y hệt, nên gọi lại ở đây không mở kết nối 2 lần). ──
   function open(){
     if(_openPromise) return _openPromise;
-    _openPromise = new Promise((resolve)=>{
+    _openPromise = window.__idbMigrateOnce(LEGACY_DB_NAME, DB_NAME).then(()=> new Promise((resolve)=>{
       if(typeof indexedDB === 'undefined'){
         useFallback = true;
         console.warn('IndexedDB không khả dụng — chuyển sang localStorage fallback.');
@@ -895,7 +957,7 @@ NS.db = (function(){
         if(NS.ui && NS.ui.toast) NS.ui.toast('warn', '⚠ IndexedDB bị lỗi/chặn (có thể do chế độ ẩn danh) — dữ liệu lưu tạm qua localStorage.');
         resolve(null);
       };
-    });
+    }));
     return _openPromise;
   }
 

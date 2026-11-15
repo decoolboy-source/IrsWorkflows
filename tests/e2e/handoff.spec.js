@@ -41,8 +41,8 @@ test.describe('Cầu nối Hub Shell — HUB:export / HUB:import (dùng dữ li�
 
     // Secondary route (nền) → phải lưu bundle cho Pressure Vessel dù chưa mở trạm đó
     const state = await page.evaluate(() => {
-      const active = localStorage.getItem('hubshell_active_project');
-      const proj = JSON.parse(localStorage.getItem('hubshell_project_' + active));
+      const active = localStorage.getItem('IrsWorkflows:hubshell_active_project');
+      const proj = JSON.parse(localStorage.getItem('IrsWorkflows:hubshell_project_' + active));
       return { hasEdge: !!proj.bundles['refrigdesign>pressurevessel'] };
     });
     expect(state.hasEdge, 'Bundle nền refrigdesign>pressurevessel phải được lưu để giao khi mở Trạm 3 sau này').toBe(true);

@@ -6,6 +6,20 @@ version riêng của mình (hiển thị ở footer/PDF của từng app) — **
 version Hub Shell dưới đây. Bảng snapshot cuối file ghi lại version từng trạm
 tại các mốc quan trọng để tham chiếu.
 
+## [1.4.0] — 2026-11-15
+
+### Changed — Chuẩn hóa để chạy chung origin với các PWA khác (cache `IrsWorkflows-v5`)
+- Service worker đăng ký bằng `register('./sw.js', { scope: './' })`.
+- `manifest.webmanifest`: thêm `"id": "./Hub_Shell.html"`; giữ `"start_url": "./Hub_Shell.html"` (Hub là điểm vào,
+  `index.html` chỉ chuyển hướng), `"scope": "./"`.
+- Tên cache đổi từ `hubshell-v<số>` sang `IrsWorkflows-v<số>`. Khi kích hoạt chỉ xóa cache của chính suite này
+  (cả tiền tố cũ), không đụng cache của app khác.
+- Mọi khóa localStorage của Hub và 4 trạm có tiền tố `IrsWorkflows:` (trước là `hubshell_*`, `refrigdesign_nh3_*`,
+  `nh3vessel_*`, `apppv_*`, `boq_*`). Mỗi file tự chép dữ liệu từ khóa cũ sang khóa mới lần đầu mở, giữ khóa cũ.
+- CSDL IndexedDB của Trạm 1 (`refrigdesign_nh3_db`) và Trạm 3 (`apppv_idb_v1`) đổi tên có tiền tố `IrsWorkflows:`.
+  Lần đầu mở, trạm tự chép toàn bộ bảng và bản ghi từ CSDL cũ sang. CSDL cũ được giữ nguyên.
+- Test e2e đọc khóa localStorage mới.
+
 ## [1.3.0] — 2026-08-21
 
 ### Changed — Hợp nhất "dự án" thành 1 nguồn duy nhất

@@ -692,6 +692,14 @@ function setupVietnameseFont(doc){
 }
 </script>
 <script>
+/* [IrsWorkflows] localStorage dùng chung origin với các PWA khác: mọi khóa của app này có tiền tố "IrsWorkflows:".
+   Lần đầu mở bản mới: chép dữ liệu từ khóa cũ sang khóa mới (nếu khóa mới chưa có). Giữ nguyên khóa cũ. */
+(function(){try{var P="IrsWorkflows:",E=[],F=["hubshell_", "refrigdesign_nh3_", "nh3vessel_", "apppv_", "boq_"],i,k,K=[];
+for(i=0;i<localStorage.length;i++){k=localStorage.key(i);if(k&&k.indexOf(P)!==0)K.push(k);}
+K.forEach(function(k){var hit=E.indexOf(k)>=0||F.some(function(f){return k.indexOf(f)===0;});
+if(hit&&localStorage.getItem(P+k)===null)localStorage.setItem(P+k,localStorage.getItem(k));});
+}catch(e){}})();
+
 // ── Kích thước icon dựa vào class Tailwind (w-3, w-3.5, w-4...) — trang
 // KHÔNG build CSS Tailwind nên các class w-*/h-* này không tồn tại; SVG
 // trước đây không có width/height nào cả, trình duyệt vẽ ở kích thước mặc
@@ -780,7 +788,7 @@ const _state = {
   electricalImport: null, // {compressors, condensers, stationElectrical}
   auditLog: [],
   handoffBundles: [],
-  lang: localStorage.getItem('boq_lang') || 'vi'
+  lang: localStorage.getItem('IrsWorkflows:boq_lang') || 'vi'
 };
 
 // ── I18N — nhãn tĩnh (id="t_xxx") + DICT cho text sinh động trong JS ──
@@ -873,7 +881,7 @@ function _L(obj){ return obj[_state.lang] || obj.vi; } // lay dung nhan theo ngo
 function _D(key){ return DICT[key] ? (DICT[key][_state.lang]||DICT[key].vi) : key; }
 
 function applyLanguage(lang){
-  _state.lang = lang; localStorage.setItem('boq_lang', lang);
+  _state.lang = lang; localStorage.setItem('IrsWorkflows:boq_lang', lang);
   document.querySelectorAll('[id^="t_"]').forEach(function(el){
     const v = I18N[lang][el.id];
     if(v===undefined) return;
@@ -1016,12 +1024,12 @@ function applyFormFields(fields){
 function scheduleAutosave(){
   clearTimeout(_autosaveTimer);
   _autosaveTimer = setTimeout(function(){
-    try{ localStorage.setItem('boq_autosave', JSON.stringify({ state:_state, fields:captureFormFields(), savedAt:new Date().toISOString() })); }catch(e){}
+    try{ localStorage.setItem('IrsWorkflows:boq_autosave', JSON.stringify({ state:_state, fields:captureFormFields(), savedAt:new Date().toISOString() })); }catch(e){}
   }, 800);
 }
 function restoreAutosave(){
   let saved;
-  try{ saved = JSON.parse(localStorage.getItem('boq_autosave')); }catch(e){ return; }
+  try{ saved = JSON.parse(localStorage.getItem('IrsWorkflows:boq_autosave')); }catch(e){ return; }
   if(!saved || !saved.state) return;
   if(!saved.state.items || !saved.state.items.length) return; // không có gì đáng khôi phục
   Object.assign(_state, saved.state);

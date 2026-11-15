@@ -955,7 +955,15 @@ function setupVietnameseFont(doc){
   doc.setFont('Roboto', 'normal');
 }
 </script>
-<script>// NH3 Vessel Calculator - Tram 2 - QuocDe Engineering Suite v26.07.02.01
+<script>
+/* [IrsWorkflows] localStorage dùng chung origin với các PWA khác: mọi khóa của app này có tiền tố "IrsWorkflows:".
+   Lần đầu mở bản mới: chép dữ liệu từ khóa cũ sang khóa mới (nếu khóa mới chưa có). Giữ nguyên khóa cũ. */
+(function(){try{var P="IrsWorkflows:",E=[],F=["hubshell_", "refrigdesign_nh3_", "nh3vessel_", "apppv_", "boq_"],i,k,K=[];
+for(i=0;i<localStorage.length;i++){k=localStorage.key(i);if(k&&k.indexOf(P)!==0)K.push(k);}
+K.forEach(function(k){var hit=E.indexOf(k)>=0||F.some(function(f){return k.indexOf(f)===0;});
+if(hit&&localStorage.getItem(P+k)===null)localStorage.setItem(P+k,localStorage.getItem(k));});
+}catch(e){}})();
+// NH3 Vessel Calculator - Tram 2 - QuocDe Engineering Suite v26.07.02.01
 // ── Kích thước icon dựa vào class Tailwind (w-3, w-3.5, w-4...) — trang
 // KHÔNG build CSS Tailwind nên các class w-*/h-* này không tồn tại; SVG
 // trước đây không có width/height nào cả, trình duyệt vẽ ở kích thước mặc
@@ -1023,7 +1031,7 @@ window.AppNH3Vessel = window.AppNH3Vessel || {};
 //  I18N — đa ngôn ngữ VI/EN. Áp dụng cho id="t_xxx" (tĩnh) qua applyStatic(),
 //  và D(key) cho chuỗi sinh động trong các hàm render (bảng kết quả, gas...).
 // ══════════════════════════════════════════════════════════════════════════
-let _lang = localStorage.getItem('nh3vessel_lang') || 'vi';
+let _lang = localStorage.getItem('IrsWorkflows:nh3vessel_lang') || 'vi';
 const I18N = {
   vi: {
     t_topTitle:'NH₃ Vessel Calculator', t_topSub:'Trạm 2 — Sizing bình áp lực hệ lạnh NH₃',
@@ -1207,7 +1215,7 @@ const DICT = {
 };
 function D(key){ return (DICT[key] && (DICT[key][_lang]||DICT[key].vi)) || key; }
 function applyLanguage(lang){
-  _lang = lang; localStorage.setItem('nh3vessel_lang', lang);
+  _lang = lang; localStorage.setItem('IrsWorkflows:nh3vessel_lang', lang);
   document.querySelectorAll('[id^="t_"]').forEach(function(el){
     const v = I18N[lang][el.id];
     if(v===undefined) return;
@@ -1903,7 +1911,7 @@ const _ui = {
   SETTINGS_DEFAULT: { vSuction:10, vWetReturn:0.4, vWetReturnPump:12, vHPFeed:0.6, vPumpFeed:1.0, unitPressure:'MPa' },
   getSettings(){
     try{
-      const raw=localStorage.getItem('nh3vessel_settings');
+      const raw=localStorage.getItem('IrsWorkflows:nh3vessel_settings');
       if(raw) return Object.assign({},this.SETTINGS_DEFAULT,JSON.parse(raw));
     }catch(e){}
     return Object.assign({},this.SETTINGS_DEFAULT);
@@ -1927,11 +1935,11 @@ const _ui = {
       vPumpFeed:parseFloat(document.getElementById('set_vPumpFeed').value)||this.SETTINGS_DEFAULT.vPumpFeed,
       unitPressure:document.getElementById('set_unitPressure').value
     };
-    try{ localStorage.setItem('nh3vessel_settings',JSON.stringify(s)); }catch(e){}
+    try{ localStorage.setItem('IrsWorkflows:nh3vessel_settings',JSON.stringify(s)); }catch(e){}
     AppNH3Vessel.calc.run();
   },
   resetSettingsDefault(){
-    try{ localStorage.removeItem('nh3vessel_settings'); }catch(e){}
+    try{ localStorage.removeItem('IrsWorkflows:nh3vessel_settings'); }catch(e){}
     this.openSettingsModal();
     AppNH3Vessel.calc.run();
     this.toast('ok','Đã khôi phục vận tốc chuẩn ASHRAE mặc định');
@@ -2053,7 +2061,7 @@ function scheduleAutosave(){
   clearTimeout(_autosaveTimer);
   _autosaveTimer = setTimeout(function(){
     try{
-      localStorage.setItem('nh3vessel_autosave', JSON.stringify({
+      localStorage.setItem('IrsWorkflows:nh3vessel_autosave', JSON.stringify({
         state: _state, globalFields: captureGlobalFields(),
         manualStations: _state.importedCSt ? null : captureManualStations(),
         savedAt: new Date().toISOString()
@@ -2063,7 +2071,7 @@ function scheduleAutosave(){
 }
 function restoreAutosave(){
   let saved;
-  try{ saved = JSON.parse(localStorage.getItem('nh3vessel_autosave')); }catch(e){ return; }
+  try{ saved = JSON.parse(localStorage.getItem('IrsWorkflows:nh3vessel_autosave')); }catch(e){ return; }
   if(!saved || !saved.state) return;
   const hasVessels = saved.state.vessels && saved.state.vessels.length;
   const hasManual = saved.manualStations && saved.manualStations.rows && saved.manualStations.rows.length;

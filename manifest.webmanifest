@@ -2,6 +2,7 @@
   "name": "Hub Shell — Suite Thiết kế Kho lạnh NH3",
   "short_name": "Hub Shell",
   "description": "Điều phối 4 trạm tính toán kho lạnh NH3 (RefrigDesignNH3 → NH3 Vessel → Pressure Vessel → BOQ & Cost Estimate) thành một quy trình liền mạch, chạy trên điện thoại và máy tính.",
+  "id": "./Hub_Shell.html",
   "start_url": "./Hub_Shell.html",
   "scope": "./",
   "display": "standalone",

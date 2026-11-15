@@ -135,7 +135,7 @@ test.describe('Hub Shell — tổng quan & điều hướng', () => {
     await expect(page.locator('#crumb b')).toContainText('RefrigDesignNH3', { timeout: 15_000 });
     const rdn3 = await getFrame(page, 'refrigdesign', 15_000);
 
-    const hubActiveId = await page.evaluate(() => localStorage.getItem('hubshell_active_project'));
+    const hubActiveId = await page.evaluate(() => localStorage.getItem('IrsWorkflows:hubshell_active_project'));
     const s1 = await rdn3.evaluate(async () => {
       const list = await window.RefrigDesignNH3.db.listProjects();
       return { count: list.length, id: list[0] && list[0].id };

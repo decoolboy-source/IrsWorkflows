@@ -143,7 +143,7 @@ dùng cho dự án thật, nên tự bấm thử trên ít nhất 1 điện tho�
 ## Cập nhật sau này
 
 Khi sửa nội dung 1 trong 4 file trạm hoặc `Hub_Shell.html`, nhớ:
-1. Tăng `CACHE_VERSION` trong `sw.js` (VD `hubshell-v3`) để trình duyệt của
+1. Tăng `CACHE_VERSION` trong `sw.js` (dạng `IrsWorkflows-v<số>`, VD `IrsWorkflows-v6`) để trình duyệt của
    người dùng đã cài app tải lại đúng bản mới thay vì dùng bản cache cũ.
 2. Nếu thay đổi ảnh hưởng hành vi của `Hub_Shell.html` (không phải sửa nhỏ
    trong 1 trạm), tăng `HUB_SHELL_VERSION` trong `Hub_Shell.html` và ghi vào
